@@ -103,15 +103,6 @@ Each seat votes YES or NO. Weighted voting determines outcome:
 - Passing threshold: 10/18 votes
 - You'll see which perspective won
 
-### Check Current Status
-```bash
-pob status
-```
-Shows:
-- Current Reigning Bruce details
-- Recent sessions
-- Psychological analysis and warnings
-
 ### View Identity Timeline
 ```bash
 pob timeline
@@ -156,8 +147,28 @@ Generates a complete export of:
 
 ### Morning Routine
 ```bash
-pob status                    # Check yesterday's policy
-pob session daily             # Conduct today's session
+pob status        # Check yesterday's policy
+pob session daily # Conduct today's session
+```
+
+### Review Your Week
+```bash
+pob read --count 7 --full  # Read last 7 entries in detail
+pob stats                  # See your activity stats
+pob session weekly         # Conduct weekly reflection
+```
+
+### Find Patterns
+```bash
+pob search "anxious"               # When did you feel anxious?
+pob search "breakthrough"          # Find your breakthrough moments
+pob search "career" --seat purpose # What did Purpose say about career?
+```
+
+### Read a Specific Memory
+```bash
+pob read --date 2025-12-01 --full  # Revisit December 1st
+pob read --date latest --full      # Read your latest entry
 ```
 
 ### Major Decision
@@ -319,10 +330,19 @@ pob session daily
 # 5. Check your status
 pob status
 
-# 6. Make a big decision
+# 6. Read your entries
+pob read --full
+
+# 7. See your stats
+pob stats
+
+# 8. Search your entries
+pob search "important topic"
+
+# 9. Make a big decision
 pob vote "Your important question?"
 
-# 7. Export when needed
+# 10. Export when needed
 pob export
 ```
 
