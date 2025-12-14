@@ -1,10 +1,7 @@
 import typer
 from rich.console import Console
-from rich.table import Table
 from rich.panel import Panel
-from rich.markdown import Markdown
-from datetime import datetime
-from pathlib import Path
+from datetime import datetime, timedelta
 from .storage import Storage
 from .services import ParliamentService
 
@@ -290,6 +287,247 @@ def timeline():
         
         if bruce.exit_report:
             console.print(f"   Exit: {bruce.exit_report}")
+
+
+@app.command()
+def read(
+    date: str = typer.Option(None, help="Specific date (YYYY-MM-DD) or 'latest'"),
+    count: int = typer.Option(10, help="Number of recent entries to show"),
+    full: bool = typer.Option(False, help="Show full entries (default shows summaries)")
+):
+    """Read journal entries."""
+    service = get_service()
+    
+    if not service.state.journal_entries:
+        console.print("[yellow]No journal entries yet. Create one with 'pob session daily'[/yellow]")
+        return
+    
+    entries = []
+    
+    # Filter by date if specified
+    if date:
+        if date.lower() == "latest":
+            entries = [service.state.journal_entries[-1]]
+        else:
+            # Parse date and find matching entries
+            target_date = date
+            entries = [e for e in service.state.journal_entries 
+                      if e.date.startswith(target_date)]
+            
+            if not entries:
+                console.print(f"[yellow]No entries found for {date}[/yellow]")
+                return
+    else:
+        # Show most recent entries
+        entries = service.state.journal_entries[-count:]
+    
+    # Display entries
+    for i, entry in enumerate(entries):
+        date_obj = datetime.fromisoformat(entry.date)
+        date_str = date_obj.strftime('%Y-%m-%d %H:%M')
+        
+        if full:
+            # Full detailed view
+            console.print("\n" + "="*70)
+            console.print(Panel.fit(
+                f"[bold cyan]{entry.session_type.upper()} SESSION[/bold cyan]\n"
+                f"Date: {date_str}\n"
+                f"Reigning Bruce: {entry.reigning_bruce_name}",
+                title=f"📔 Entry {len(service.state.journal_entries) - len(entries) + i + 1}"
+            ))
+            
+            console.print(f"\n[bold cyan]Short-Term Bruce:[/bold cyan]")
+            console.print(entry.short_term)
+            
+            console.print(f"\n[bold cyan]Mid-Term Bruce:[/bold cyan]")
+            console.print(entry.mid_term)
+            
+            console.print(f"\n[bold cyan]Long-Term Bruce:[/bold cyan]")
+            console.print(entry.long_term)
+            
+            console.print(f"\n[bold cyan]Purpose Bruce:[/bold cyan]")
+            console.print(entry.purpose)
+            
+            console.print(f"\n[bold cyan]Ultimate Bruce:[/bold cyan]")
+            console.print(entry.ultimate)
+            
+            console.print(f"\n[bold green]Reigning Bruce ({entry.reigning_bruce_name}):[/bold green]")
+            console.print(entry.reigning)
+            
+            console.print(f"\n[bold yellow]Final Policy:[/bold yellow]")
+            console.print(entry.final_policy)
+            
+            if entry.decisions_voted_on:
+                console.print(f"\n[bold]Decisions Voted:[/bold]")
+                for dec in entry.decisions_voted_on:
+                    console.print(f"  • {dec.topic}: {'PASSED' if dec.passed else 'FAILED'}")
+        else:
+            # Summary view
+            console.print(f"\n[bold]{date_str}[/bold] - {entry.session_type}")
+            console.print(f"  Bruce: {entry.reigning_bruce_name}")
+            console.print(f"  Policy: {entry.final_policy[:80]}{'...' if len(entry.final_policy) > 80 else ''}")
+    
+    # Show usage tip if in summary mode
+    if not full and entries:
+        console.print(f"\n[dim]Showing {len(entries)} entries (summaries). Use --full flag for complete entries.[/dim]")
+        console.print(f"[dim]Examples:[/dim]")
+        console.print(f"[dim]  pob read --date 2025-12-14 --full[/dim]")
+        console.print(f"[dim]  pob read --date latest --full[/dim]")
+        console.print(f"[dim]  pob read --count 20[/dim]")
+
+
+@app.command()
+def search(
+    query: str = typer.Argument(..., help="Search term to find in entries"),
+    seat: str = typer.Option(None, help="Search specific seat: short_term, mid_term, long_term, purpose, ultimate, reigning, policy")
+):
+    """Search journal entries for specific content."""
+    service = get_service()
+    
+    if not service.state.journal_entries:
+        console.print("[yellow]No journal entries to search[/yellow]")
+        return
+    
+    query_lower = query.lower()
+    matches = []
+    
+    for entry in service.state.journal_entries:
+        fields_to_search = {}
+        
+        if seat:
+            # Search specific seat
+            if seat == "short_term":
+                fields_to_search = {"Short-Term": entry.short_term}
+            elif seat == "mid_term":
+                fields_to_search = {"Mid-Term": entry.mid_term}
+            elif seat == "long_term":
+                fields_to_search = {"Long-Term": entry.long_term}
+            elif seat == "purpose":
+                fields_to_search = {"Purpose": entry.purpose}
+            elif seat == "ultimate":
+                fields_to_search = {"Ultimate": entry.ultimate}
+            elif seat == "reigning":
+                fields_to_search = {"Reigning": entry.reigning}
+            elif seat == "policy":
+                fields_to_search = {"Policy": entry.final_policy}
+        else:
+            # Search all fields
+            fields_to_search = {
+                "Short-Term": entry.short_term,
+                "Mid-Term": entry.mid_term,
+                "Long-Term": entry.long_term,
+                "Purpose": entry.purpose,
+                "Ultimate": entry.ultimate,
+                "Reigning": entry.reigning,
+                "Policy": entry.final_policy
+            }
+        
+        # Check for matches
+        found_in = []
+        for field_name, field_content in fields_to_search.items():
+            if query_lower in field_content.lower():
+                # Get context around match
+                index = field_content.lower().index(query_lower)
+                start = max(0, index - 40)
+                end = min(len(field_content), index + len(query) + 40)
+                context = field_content[start:end]
+                if start > 0:
+                    context = "..." + context
+                if end < len(field_content):
+                    context = context + "..."
+                
+                found_in.append((field_name, context))
+        
+        if found_in:
+            matches.append((entry, found_in))
+    
+    # Display results
+    if not matches:
+        console.print(f"[yellow]No matches found for '{query}'[/yellow]")
+        return
+    
+    console.print(f"\n[bold]Found {len(matches)} entries containing '{query}':[/bold]\n")
+    
+    for entry, found_in in matches:
+        date_obj = datetime.fromisoformat(entry.date)
+        date_str = date_obj.strftime('%Y-%m-%d')
+        
+        console.print(f"[cyan]{date_str}[/cyan] - {entry.session_type} - {entry.reigning_bruce_name}")
+        for field_name, context in found_in:
+            console.print(f"  [{field_name}] {context}")
+        console.print()
+
+
+@app.command()
+def stats():
+    """Show statistics about your parliament usage."""
+    service = get_service()
+    
+    total_entries = len(service.state.journal_entries)
+    total_decisions = len(service.state.decisions)
+    total_bruces = len(service.state.bruce_history) + (1 if service.state.reigning_bruce else 0)
+    
+    if total_entries == 0:
+        console.print("[yellow]No data yet. Start with 'pob session daily'[/yellow]")
+        return
+    
+    # Calculate date range
+    first_entry = service.state.journal_entries[0]
+    last_entry = service.state.journal_entries[-1]
+    first_date = datetime.fromisoformat(first_entry.date)
+    last_date = datetime.fromisoformat(last_entry.date)
+    days_active = (last_date - first_date).days + 1
+    
+    # Session type breakdown
+    session_types = {}
+    for entry in service.state.journal_entries:
+        session_types[entry.session_type] = session_types.get(entry.session_type, 0) + 1
+    
+    # Decision success rate
+    passed = sum(1 for d in service.state.decisions if d.passed)
+    failed = total_decisions - passed
+    
+    # Current streak (consecutive days with entries)
+    streak = 0
+    current_date = datetime.now().date()
+    for entry in reversed(service.state.journal_entries):
+        entry_date = datetime.fromisoformat(entry.date).date()
+        if entry_date == current_date:
+            streak += 1
+            current_date -= timedelta(days=1)
+        elif entry_date < current_date:
+            break
+    
+    # Display stats
+    console.print(Panel.fit(
+        f"[bold cyan]Parliament Statistics[/bold cyan]\n\n"
+        f"📊 Overall:\n"
+        f"  • Total Sessions: {total_entries}\n"
+        f"  • Total Decisions: {total_decisions}\n"
+        f"  • Identity Versions: {total_bruces}\n"
+        f"  • Days Active: {days_active}\n"
+        f"  • Current Streak: {streak} days\n\n"
+        f"📝 Session Types:\n" +
+        "\n".join(f"  • {k}: {v}" for k, v in session_types.items()) +
+        f"\n\n🗳️  Decision Record:\n"
+        f"  • Passed: {passed}\n"
+        f"  • Failed: {failed}\n"
+        f"  • Success Rate: {(passed/total_decisions*100) if total_decisions > 0 else 0:.1f}%",
+        title="📈 Your Journey"
+    ))
+    
+    # Most productive Bruce
+    if service.state.bruce_history:
+        most_sessions = max(service.state.bruce_history, key=lambda b: b.session_count)
+        console.print(f"\n[bold]Most Productive Bruce:[/bold] {most_sessions.name} ({most_sessions.session_count} sessions)")
+    
+    # Recent activity
+    if total_entries >= 7:
+        recent_7 = service.state.journal_entries[-7:]
+        console.print(f"\n[bold]Last 7 Days Activity:[/bold]")
+        for entry in recent_7:
+            date = datetime.fromisoformat(entry.date).strftime('%Y-%m-%d')
+            console.print(f"  {date}: {entry.session_type}")
 
 
 @app.command()
