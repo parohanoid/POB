@@ -7,7 +7,7 @@ setup(
     install_requires=[
         "typer>=0.9.0",
         "rich>=13.0.0",
-        "pydantic>=2.0.0",
+        "pydantic>=1.10.0,<2.0.0",
     ],
     entry_points={
         "console_scripts": [
