@@ -11,6 +11,9 @@ class Seat(BaseModel):
     last_statement: str = ""
     active: bool = True
 
+    class Config:
+        validate_assignment = True
+
 
 class ReigningBruce(BaseModel):
     """Represents the current identity version."""
@@ -20,6 +23,9 @@ class ReigningBruce(BaseModel):
     end_date: Optional[str] = None
     exit_report: Optional[str] = None
     session_count: int = 0
+
+    class Config:
+        validate_assignment = True
 
 
 class Decision(BaseModel):
@@ -31,6 +37,9 @@ class Decision(BaseModel):
     scores_breakdown: Dict[str, int]
     passed: bool
     timestamp: str
+
+    class Config:
+        validate_assignment = True
 
 
 class JournalEntry(BaseModel):
@@ -47,6 +56,9 @@ class JournalEntry(BaseModel):
     decisions_voted_on: List[Decision] = Field(default_factory=list)
     reigning_bruce_name: str = ""
 
+    class Config:
+        validate_assignment = True
+
 
 class ParliamentState(BaseModel):
     """Complete state of the parliament system."""
@@ -56,3 +68,7 @@ class ParliamentState(BaseModel):
     journal_entries: List[JournalEntry] = Field(default_factory=list)
     decisions: List[Decision] = Field(default_factory=list)
     created_at: str = Field(default_factory=lambda: datetime.now().isoformat())
+
+    class Config:
+        validate_assignment = True
+

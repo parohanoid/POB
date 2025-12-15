@@ -31,7 +31,7 @@ class Storage:
     def save(self, state: ParliamentState) -> None:
         """Save parliament state to disk."""
         with open(self.data_file, 'w') as f:
-            json.dump(state.model_dump(), f, indent=2)
+            json.dump(state.dict(), f, indent=2)
     
     def _create_initial_state(self) -> ParliamentState:
         """Create initial parliament state with permanent seats."""
