@@ -79,7 +79,7 @@ def status():
 def session(
     session_type: str = typer.Argument("daily", help="Session type: daily, weekly, monthly")
 ):
-    """Conduct a parliament session."""
+    """Conduct a parliament session with rotating discussion."""
     service = get_service()
     
     if not service.state.reigning_bruce:
@@ -89,14 +89,20 @@ def session(
     
     console.print(Panel.fit(
         f"[bold cyan]{session_type.upper()} PARLIAMENT SESSION[/bold cyan]\n"
-        f"Reigning Bruce: {service.state.reigning_bruce.name}",
+        f"Reigning Bruce: {service.state.reigning_bruce.name}\n\n"
+        f"[yellow]Parliament Discussion (Rotating)[/yellow]\n"
+        f"Each seat will speak. After all have spoken, you can continue the discussion\n"
+        f"or move to final policy. Press [bold]Ctrl+D[/bold] or type [bold]'stop'[/bold] to end rotation.",
         title="🏛️  Parliament Convenes"
     ))
     
-    responses = {}
+    permanent_responses = {}
+    temporary_responses = {}
+    round_num = 1
+    stop_rotation = False
     
-    # Collect from each seat
-    seats = [
+    # Get seat order
+    permanent_order = [
         ("short_term", "Short-Term Bruce", "What does your immediate self need today?"),
         ("mid_term", "Mid-Term Bruce", "What should you focus on this week/month?"),
         ("long_term", "Long-Term Bruce", "What moves you toward your 5-year vision?"),
@@ -104,24 +110,88 @@ def session(
         ("ultimate", "Ultimate Bruce", "What truth must be spoken from the end of your life?"),
     ]
     
-    for key, name, prompt in seats:
-        console.print(f"\n[bold cyan]{name}[/bold cyan]")
-        response = typer.prompt(prompt)
-        responses[key] = response
+    temp_bruces = service.get_active_temporary_bruces()
     
-    # Reigning Bruce summary
-    console.print(f"\n[bold cyan]Reigning Bruce ({service.state.reigning_bruce.name})[/bold cyan]")
-    responses["reigning"] = typer.prompt("Synthesize the parliament's wisdom")
+    while not stop_rotation:
+        console.print(f"\n[bold magenta]━━━ ROUND {round_num} ━━━[/bold magenta]")
+        round_had_responses = False
+        
+        # Permanent seats
+        for key, name, prompt in permanent_order:
+            console.print(f"\n[bold cyan]{name}[/bold cyan]")
+            try:
+                response = typer.prompt(prompt)
+                if response.lower() in ["stop", "exit", "done"]:
+                    stop_rotation = True
+                    break
+                
+                if round_num == 1:
+                    permanent_responses[key] = response
+                else:
+                    if permanent_responses[key]:
+                        permanent_responses[key] += f"\n\n[Round {round_num}] {response}"
+                    else:
+                        permanent_responses[key] = response
+                round_had_responses = True
+            except EOFError:
+                # Handle Ctrl+D
+                stop_rotation = True
+                break
+        
+        if stop_rotation:
+            break
+        
+        # Temporary bruces
+        for temp_id, temp_bruce in temp_bruces:
+            console.print(f"\n[bold yellow]{temp_bruce.name}[/bold yellow]")
+            console.print(f"[dim][{temp_bruce.description}][/dim]")
+            try:
+                response = typer.prompt(f"Response from {temp_bruce.name}")
+                if response.lower() in ["stop", "exit", "done"]:
+                    stop_rotation = True
+                    break
+                
+                if temp_id not in temporary_responses:
+                    temporary_responses[temp_id] = response
+                else:
+                    temporary_responses[temp_id] += f"\n\n[Round {round_num}] {response}"
+                round_had_responses = True
+            except EOFError:
+                stop_rotation = True
+                break
+        
+        if stop_rotation:
+            break
+        
+        # Ask if user wants to continue discussion
+        if round_had_responses:
+            console.print(f"\n[dim]All seats have spoken in Round {round_num}.[/dim]")
+            continue_discussion = typer.confirm("Continue discussion for another round?", default=False)
+            if not continue_discussion:
+                stop_rotation = True
+            else:
+                round_num += 1
+        else:
+            stop_rotation = True
+    
+    # Get Reigning Bruce synthesis
+    console.print(f"\n[bold green]Reigning Bruce ({service.state.reigning_bruce.name})[/bold green]")
+    reigning_response = typer.prompt("Synthesize the parliament's wisdom")
     
     # Final policy
     console.print(f"\n[bold green]Final Policy[/bold green]")
-    responses["final_policy"] = typer.prompt("What is today's governing policy?")
+    final_policy = typer.prompt("What is today's governing policy?")
     
     # Create entry
-    entry = service.create_session(session_type, responses)
+    permanent_responses["reigning"] = reigning_response
+    permanent_responses["final_policy"] = final_policy
+    
+    entry = service.create_session(session_type, permanent_responses, temporary_responses)
     
     console.print("\n[green]✓ Session recorded successfully[/green]")
     console.print(f"[dim]Entry saved: {datetime.fromisoformat(entry.date).strftime('%Y-%m-%d %H:%M')}[/dim]")
+    if temporary_responses:
+        console.print(f"[dim]Temporary Bruces contributed: {len(temporary_responses)}[/dim]")
 
 
 @app.command()
@@ -257,6 +327,70 @@ def reign(action: str = typer.Argument("new", help="Action: new")):
 
 
 @app.command()
+def add_voice(
+    name: str = typer.Argument(..., help="Name of the temporary Bruce"),
+    description: str = typer.Option(..., "--description", "-d", help="Description of this voice")
+):
+    """Add a temporary Bruce voice to parliament (discussion only, no voting)."""
+    service = get_service()
+    
+    temp_bruce = service.add_temporary_bruce(name, description)
+    
+    console.print(Panel.fit(
+        f"[bold cyan]{name}[/bold cyan]\n\n"
+        f"[dim]{description}[/dim]\n\n"
+        f"[green]✓ Added to parliament[/green]\n"
+        f"[dim]ID: {temp_bruce.id}[/dim]",
+        title="🗣️  New Voice"
+    ))
+
+
+@app.command()
+def remove_voice(voice_id: str = typer.Argument(..., help="ID of the temporary Bruce to remove")):
+    """Remove a temporary Bruce voice from parliament."""
+    service = get_service()
+    
+    # Find the voice
+    if voice_id not in service.state.temporary_bruces:
+        console.print(f"[red]✗ Voice '{voice_id}' not found[/red]")
+        return
+    
+    voice = service.state.temporary_bruces[voice_id]
+    confirm = typer.confirm(f"Remove '{voice.name}' from parliament?")
+    
+    if confirm:
+        service.dismiss_temporary_bruce(voice_id)
+        console.print(f"[green]✓ '{voice.name}' has been dismissed[/green]")
+
+
+@app.command()
+def voices():
+    """List all active temporary Bruce voices in parliament."""
+    service = get_service()
+    
+    temp_bruces = service.get_active_temporary_bruces()
+    
+    if not temp_bruces:
+        console.print("[yellow]No temporary voices currently active[/yellow]")
+        console.print("Add one with: [cyan]pob add-voice <name> -d <description>[/cyan]")
+        return
+    
+    console.print(Panel.fit(
+        "[bold cyan]Active Temporary Voices in Parliament[/bold cyan]",
+        title="🗣️  Voices"
+    ))
+    
+    for temp_id, temp_bruce in temp_bruces:
+        console.print(f"\n[bold]{temp_bruce.name}[/bold]")
+        console.print(f"  ID: {temp_id}")
+        console.print(f"  Description: {temp_bruce.description}")
+        if temp_bruce.last_statement:
+            statement_preview = temp_bruce.last_statement[:100] + "..." if len(temp_bruce.last_statement) > 100 else temp_bruce.last_statement
+            console.print(f"  Last: {statement_preview}")
+
+
+
+@app.command()
 def timeline():
     """Show timeline of all Bruce identities."""
     service = get_service()
@@ -356,6 +490,15 @@ def read(
             
             console.print(f"\n[bold yellow]Final Policy:[/bold yellow]")
             console.print(entry.final_policy)
+            
+            # Show temporary Bruce responses if any
+            if entry.temporary_bruce_entries:
+                console.print(f"\n[bold yellow]Temporary Voices:[/bold yellow]")
+                for temp_id, response in entry.temporary_bruce_entries.items():
+                    if temp_id in service.state.temporary_bruces:
+                        temp_bruce = service.state.temporary_bruces[temp_id]
+                        console.print(f"\n[yellow]{temp_bruce.name}:[/yellow]")
+                        console.print(response)
             
             if entry.decisions_voted_on:
                 console.print(f"\n[bold]Decisions Voted:[/bold]")
@@ -541,7 +684,7 @@ def export(format: str = typer.Option("markdown", help="Export format: markdown 
         filename = f"parliament_export_{timestamp}.json"
         import json
         with open(filename, 'w') as f:
-            json.dump(service.state.model_dump(), f, indent=2)
+            json.dump(service.state.dict(), f, indent=2)
         console.print(f"[green]✓ Exported to {filename}[/green]")
     
     elif format == "markdown":

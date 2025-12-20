@@ -1,7 +1,7 @@
 import json
 from pathlib import Path
 from typing import Optional
-from .models import ParliamentState, Seat, ReigningBruce
+from .models import ParliamentState, Seat, ReigningBruce, TemporaryBruce
 
 
 class Storage:
@@ -23,6 +23,17 @@ class Storage:
         try:
             with open(self.data_file, 'r') as f:
                 data = json.load(f)
+            
+            # Backward compatibility: ensure temporary_bruces key exists
+            if "temporary_bruces" not in data:
+                data["temporary_bruces"] = {}
+            
+            # Backward compatibility: ensure temporary_bruce_entries in journal entries
+            if "journal_entries" in data:
+                for entry in data["journal_entries"]:
+                    if "temporary_bruce_entries" not in entry:
+                        entry["temporary_bruce_entries"] = {}
+            
             return ParliamentState(**data)
         except Exception as e:
             print(f"Error loading data: {e}")
@@ -31,7 +42,7 @@ class Storage:
     def save(self, state: ParliamentState) -> None:
         """Save parliament state to disk."""
         with open(self.data_file, 'w') as f:
-            json.dump(state.model_dump(), f, indent=2)
+            json.dump(state.dict(), f, indent=2)
     
     def _create_initial_state(self) -> ParliamentState:
         """Create initial parliament state with permanent seats."""
