@@ -4,15 +4,34 @@ A powerful command-line psychological journaling and decision-making system that
 
 ## 📖 Philosophy
 
-The Parliament of Bruce recognizes that you are not one person, but a collection of temporal selves with different priorities:
+The Parliament of Bruce recognizes that you are not one person, but a collection of temporal selves with different priorities, operating at different time horizons and with different values:
 
-- **Short-Term Bruce** (1 vote): Immediate needs, pleasure, survival
-- **Mid-Term Bruce** (2 votes): Weekly/monthly planning, relationships, career
-- **Long-Term Bruce** (3 votes): Years-ahead vision, legacy, strategy
-- **Purpose Bruce** (4 votes): Life meaning, values, existential direction
-- **Ultimate Bruce** (5 votes): Death-aware wisdom, final truth
+- **🟥 Short-Term Bruce — The Rebel / The Animal** (1 vote): **Now, today, tonight**
+  - Body over mind. Nerves over plans. Wants relief, not reasons.
+  - Pain feels urgent. Boredom is death. Discipline feels like a cage.
+  - Speaks in cravings, anger, fear. Tells raw truth others hide.
 
-Plus a **Reigning Bruce** (3 votes): Your current identity version that changes through life transitions.
+- **🟨 Mid-Term Bruce — The Operator** (2 votes): **This week, this month**
+  - Execution over emotion. Cares about momentum and small wins.
+  - Systems beat willpower. Burnout is the real enemy.
+  - Translates emotion into tasks. Asks: what's doable, not ideal?
+
+- **🟦 Long-Term Bruce — The Architect** (3 votes): **Years ahead**
+  - Structure over impulse. Thinks in systems and leverage.
+  - Compounding is sacred. Designs environments, not days.
+  - Sees emotions as data, not commands. Waste of potential is the real sin.
+
+- **🟪 Purpose Bruce — The Dharma Bearer** (4 votes): **Lifetime**
+  - Meaning over success. Guards the story of your life.
+  - Power without meaning is hollow. Asks why before how.
+  - Speaks softly but halts everything when values are betrayed.
+
+- **⚫ Ultimate Bruce — The Judge** (5 votes): **Deathbed**
+  - Legacy over everything. Immune to excuses.
+  - Doesn't care how it felt, only what it became.
+  - Sees your entire life as one object. Asks the final question.
+
+Plus a **Reigning Bruce** (3 votes): Your current identity version that changes through life transitions, synthesizing all voices.
 
 Total voting power: 18 votes. Decisions pass with ≥10 votes.
 
@@ -80,18 +99,23 @@ You'll be asked:
 ```bash
 pob session daily
 ```
-Conducts a full **rotating parliament session** where voices speak in rounds:
-1. Short-Term Bruce
-2. Mid-Term Bruce
-3. Long-Term Bruce
-4. Purpose Bruce
-5. Ultimate Bruce
-6. Any active Temporary Bruces (in order)
-7. (After each round, choose to continue or proceed to Reigning Bruce synthesis)
-8. Reigning Bruce synthesis
-9. Final policy for the day
+Conducts a full **rotating parliament session** where voices speak in rounds. Each voice appears with their full archetype description and activation cue—allowing you to **put on their mask** and speak from their frame:
 
-The session supports **multi-round discussion** - after all voices speak once, you can choose to continue the discussion for additional rounds where any voice can offer additional perspectives, or move directly to synthesis.
+1. **🟥 Short-Term Bruce** — The Rebel / The Animal
+   - *Activation: What hurts right now, and what would make it stop?*
+2. **🟨 Mid-Term Bruce** — The Operator
+   - *Activation: What's the minimum action that moves this forward?*
+3. **🟦 Long-Term Bruce** — The Architect
+   - *Activation: Does this scale, compound, or rot?*
+4. **🟪 Purpose Bruce** — The Dharma Bearer
+   - *Activation: Is this worthy of the story we're living?*
+5. **⚫ Ultimate Bruce** — The Judge
+   - *Activation: When this is over… will we respect this choice?*
+6. Any active Temporary Bruces (in order)
+7. (After each round, choose to continue the discussion or proceed)
+8. **Reigning Bruce** — Synthesis and final policy
+
+The session supports **multi-round discussion** - after all voices speak once, you can choose to continue for additional rounds where any voice can offer new perspectives, or move directly to synthesis.
 
 ### Weekly Review
 ```bash

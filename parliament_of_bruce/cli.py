@@ -89,10 +89,11 @@ def session(
     
     console.print(Panel.fit(
         f"[bold cyan]{session_type.upper()} PARLIAMENT SESSION[/bold cyan]\n"
-        f"Reigning Bruce: {service.state.reigning_bruce.name}\n\n"
+        f"Reigning Bruce: {service.state.reigning_bruce.name}\n"
+        f"Reason Born: {service.state.reigning_bruce.reason_born}\n\n"
         f"[yellow]Parliament Discussion (Rotating)[/yellow]\n"
         f"Each seat will speak. After all have spoken, you can continue the discussion\n"
-        f"or move to final policy. Press [bold]Ctrl+D[/bold] or type [bold]'stop'[/bold] to end rotation.",
+        f"or move to final policy. Press [bold]Ctrl+D[/bold] to end rotation.",
         title="🏛️  Parliament Convenes"
     ))
     
@@ -101,13 +102,13 @@ def session(
     round_num = 1
     stop_rotation = False
     
-    # Get seat order
+    # Get seat order with full descriptions
     permanent_order = [
-        ("short_term", "Short-Term Bruce", "What does your immediate self need today?"),
-        ("mid_term", "Mid-Term Bruce", "What should you focus on this week/month?"),
-        ("long_term", "Long-Term Bruce", "What moves you toward your 5-year vision?"),
-        ("purpose", "Purpose Bruce", "How does today align with your deepest values?"),
-        ("ultimate", "Ultimate Bruce", "What truth must be spoken from the end of your life?"),
+        ("short_term", "🟥 Short-Term Bruce — The Rebel / The Animal", "Time: now, today, tonight\nBody over mind. Nerves over plans.\n'I want relief, not reasons. Pain feels urgent. Boredom is death. Discipline feels like a cage. I don't care about later. I speak in cravings, anger, fear. If ignored, I sabotage.'\n\nActivation: What hurts right now, and what would make it stop?"),
+        ("mid_term", "🟨 Mid-Term Bruce — The Operator", "Time: this week, this month\nExecution over emotion.\n'I care about momentum. Small wins beat grand visions. Systems beat willpower. Burnout is my enemy. Chaos wastes energy. I translate emotion into tasks. Consistency is power.'\n\nActivation: What's the minimum action that moves this forward?"),
+        ("long_term", "🟦 Long-Term Bruce — The Architect", "Time: years ahead\nStructure over impulse.\n'I think in systems and leverage. Compounding is sacred. Short-term pleasure is expensive. I care about trajectory, not mood. Emotions are data. I design environments. Waste of potential is the real sin.'\n\nActivation: Does this scale, compound, or rot?"),
+        ("purpose", "🟪 Purpose Bruce — The Dharma Bearer", "Time: lifetime\nMeaning over success.\n'I guard the story of your life. Power without meaning is hollow. Pain must become purpose. I ask why before how. Betraying values costs more than failure. I see patterns across incarnations of you. I speak softly but halt everything.'\n\nActivation: Is this worthy of the story we're living?"),
+        ("ultimate", "⚫ Ultimate Bruce — The Judge", "Time: deathbed\nLegacy over everything.\n'I am immune to excuses. I don't care how it felt, only what it became. Regret is my metric. I veto actions you'll live with forever. Comfort now can mean shame later. I see your life as one object.'\n\nActivation: When this is over… will we respect this choice?"),
     ]
     
     temp_bruces = service.get_active_temporary_bruces()
@@ -116,26 +117,28 @@ def session(
         console.print(f"\n[bold magenta]━━━ ROUND {round_num} ━━━[/bold magenta]")
         round_had_responses = False
         
-        # Permanent seats
-        for key, name, prompt in permanent_order:
+        # Permanent seats + Reigning Bruce
+        seats_to_speak = permanent_order + [
+              ("reigning", f"👑 Reigning Bruce ({service.state.reigning_bruce.name})", f"Synthesize the parliament's wisdom and set direction for the realm.\nReason Born: {service.state.reigning_bruce.reason_born}")
+        ]
+        
+        for key, name, prompt in seats_to_speak:
             console.print(f"\n[bold cyan]{name}[/bold cyan]")
             try:
                 response = typer.prompt(prompt)
-                if response.lower() in ["stop", "exit", "done"]:
-                    stop_rotation = True
-                    break
                 
                 if round_num == 1:
                     permanent_responses[key] = response
                 else:
-                    if permanent_responses[key]:
+                    if permanent_responses.get(key):
                         permanent_responses[key] += f"\n\n[Round {round_num}] {response}"
                     else:
                         permanent_responses[key] = response
                 round_had_responses = True
             except EOFError:
-                # Handle Ctrl+D
+                # Handle Ctrl+D - gracefully end rotation
                 stop_rotation = True
+                console.print("\n[dim]Rotation ended.[/dim]")
                 break
         
         if stop_rotation:
@@ -146,10 +149,7 @@ def session(
             console.print(f"\n[bold yellow]{temp_bruce.name}[/bold yellow]")
             console.print(f"[dim][{temp_bruce.description}][/dim]")
             try:
-                response = typer.prompt(f"Response from {temp_bruce.name}")
-                if response.lower() in ["stop", "exit", "done"]:
-                    stop_rotation = True
-                    break
+                response = typer.prompt(f"{temp_bruce.name} — {temp_bruce.description}\nYour response:")
                 
                 if temp_id not in temporary_responses:
                     temporary_responses[temp_id] = response
@@ -157,7 +157,9 @@ def session(
                     temporary_responses[temp_id] += f"\n\n[Round {round_num}] {response}"
                 round_had_responses = True
             except EOFError:
+                # Handle Ctrl+D - gracefully end rotation
                 stop_rotation = True
+                console.print("\n[dim]Rotation ended.[/dim]")
                 break
         
         if stop_rotation:
@@ -166,24 +168,35 @@ def session(
         # Ask if user wants to continue discussion
         if round_had_responses:
             console.print(f"\n[dim]All seats have spoken in Round {round_num}.[/dim]")
-            continue_discussion = typer.confirm("Continue discussion for another round?", default=False)
-            if not continue_discussion:
+            try:
+                continue_discussion = typer.confirm("Continue discussion for another round?", default=False)
+                if not continue_discussion:
+                    stop_rotation = True
+                else:
+                    round_num += 1
+            except EOFError:
+                # Handle Ctrl+D during the continue prompt
                 stop_rotation = True
-            else:
-                round_num += 1
+                console.print("\n[dim]Rotation ended.[/dim]")
         else:
             stop_rotation = True
     
-    # Get Reigning Bruce synthesis
-    console.print(f"\n[bold green]Reigning Bruce ({service.state.reigning_bruce.name})[/bold green]")
-    reigning_response = typer.prompt("Synthesize the parliament's wisdom")
+    # Get Final Reigning Bruce synthesis (if not already given during rotation)
+    if "reigning" not in permanent_responses or not permanent_responses["reigning"]:
+        console.print(f"\n[bold green]Reigning Bruce ({service.state.reigning_bruce.name}) — Final Synthesis[/bold green]")
+        try:
+            reigning_response = typer.prompt("Synthesize the parliament's wisdom")
+            permanent_responses["reigning"] = reigning_response
+        except EOFError:
+            permanent_responses["reigning"] = "[Synthesis skipped]"
     
     # Final policy
     console.print(f"\n[bold green]Final Policy[/bold green]")
-    final_policy = typer.prompt("What is today's governing policy?")
+    try:
+        final_policy = typer.prompt("What is today's governing policy?")
+    except EOFError:
+        final_policy = "[Policy skipped]"
     
-    # Create entry
-    permanent_responses["reigning"] = reigning_response
     permanent_responses["final_policy"] = final_policy
     
     entry = service.create_session(session_type, permanent_responses, temporary_responses)

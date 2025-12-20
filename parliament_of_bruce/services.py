@@ -188,13 +188,13 @@ class ParliamentService:
         """Get all permanent seats and temporary bruces for parliament."""
         seats = {}
         
-        # Add permanent seats
+        # Add permanent seats with full descriptions for wearing the mask
         permanent = [
-            ("ShortTerm", "Short-Term Bruce", "What does your immediate self need?"),
-            ("MidTerm", "Mid-Term Bruce", "What should you focus on this week/month?"),
-            ("LongTerm", "Long-Term Bruce", "What moves you toward your 5-year vision?"),
-            ("Purpose", "Purpose Bruce", "How does today align with your deepest values?"),
-            ("Ultimate", "Ultimate Bruce", "What truth must be spoken from the end of your life?"),
+            ("ShortTerm", "🟥 Short-Term Bruce — The Rebel / The Animal", "Time: now, today, tonight\nBody over mind. Nerves over plans.\n'I want relief, not reasons. Pain feels urgent. Boredom is death. Discipline feels like a cage. I don't care about later. I speak in cravings, anger, fear. If ignored, I sabotage.'\n\nActivation: What hurts right now, and what would make it stop?"),
+            ("MidTerm", "🟨 Mid-Term Bruce — The Operator", "Time: this week, this month\nExecution over emotion.\n'I care about momentum. Small wins beat grand visions. Systems beat willpower. Burnout is my enemy. Chaos wastes energy. I translate emotion into tasks. Consistency is power.'\n\nActivation: What's the minimum action that moves this forward?"),
+            ("LongTerm", "🟦 Long-Term Bruce — The Architect", "Time: years ahead\nStructure over impulse.\n'I think in systems and leverage. Compounding is sacred. Short-term pleasure is expensive. I care about trajectory, not mood. Emotions are data. I design environments. Waste of potential is the real sin.'\n\nActivation: Does this scale, compound, or rot?"),
+            ("Purpose", "🟪 Purpose Bruce — The Dharma Bearer", "Time: lifetime\nMeaning over success.\n'I guard the story of your life. Power without meaning is hollow. Pain must become purpose. I ask why before how. Betraying values costs more than failure. I see patterns across incarnations of you. I speak softly but halt everything.'\n\nActivation: Is this worthy of the story we're living?"),
+            ("Ultimate", "⚫ Ultimate Bruce — The Judge", "Time: deathbed\nLegacy over everything.\n'I am immune to excuses. I don't care how it felt, only what it became. Regret is my metric. I veto actions you'll live with forever. Comfort now can mean shame later. I see your life as one object.'\n\nActivation: When this is over… will we respect this choice?"),
         ]
         
         for key, name, prompt in permanent:
@@ -210,7 +210,7 @@ class ParliamentService:
             seats["Reigning"] = {
                 "type": "reigning",
                 "name": self.state.reigning_bruce.name,
-                "prompt": "Synthesize the parliament's wisdom",
+                "prompt": f"Synthesize the parliament's wisdom and set direction for the realm",
                 "has_votes": True
             }
         
