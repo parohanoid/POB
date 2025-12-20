@@ -49,7 +49,134 @@ python -m parliament_of_bruce.cli init
 ```
 parliament-of-bruce/
 ├── setup.py
-├── README.md
+├── # 🏛️ Parliament of Bruce
+
+A CLI for psychological journaling and internal governance, inspired by the "internal republic" model. All data is local, and you can migrate your old `parliament_data.json` automatically.
+
+## Quickstart
+
+```bash
+python3.11 -m venv .venv
+source .venv/bin/activate
+pip install -r requirements.txt
+python -m parliament_of_bruce init
+python -m parliament_of_bruce session daily
+```
+
+Or, after installing via `pip install -e .`, use:
+
+```bash
+pob init
+pob session daily
+```
+
+## Commands
+
+### Basic Session & Status
+- `pob init [--db PATH]` - Initialize the system
+- `pob session daily` - Conduct a daily parliament session
+- `pob session weekly` - Generate weekly summary and analytics
+- `pob status` - Show current parliament status
+- `pob timeline` - Print all Bruce identities with dates
+- `pob analytics` - Show dominance and trend analytics
+
+### Identity Management
+- `pob rebirth` - Trigger major identity shift (with exit report)
+- `pob renounce` - Soft-end current Reigning Bruce
+- `pob reign new --name "Bruce vX" --reason "..."` - Create new Reigning Bruce
+
+### Voting & Decisions
+- `pob vote "topic" [--options opt1,opt2,...]` - Vote on a decision
+
+### Laws & Constitution
+- `pob law propose` - Propose a new law
+- `pob law amend <law_id>` - Amend an active law
+- `pob law repeal <law_id>` - Repeal a law
+- `pob law list` - List all laws
+- `pob constitution amend` - Amend the constitution (requires supermajority)
+
+### Custom Bruces (Temporary Extraordinary Seats)
+- `pob custom create` - Create a custom Bruce with special rules
+- `pob custom list` - List active custom Bruces
+- `pob custom status` - Show custom Bruces with expiry countdowns
+- `pob custom dismiss <name>` - Dismiss a custom Bruce
+- `pob custom extend <name>` - Extend expiry of a custom Bruce
+
+### Emergency & Export
+- `pob emergency` - Trigger emergency mode (also auto-triggered by keywords)
+- `pob export [--format json|md] [--out PATH]` - Export all data
+
+See `--help` on any command for detailed options.
+
+## Constitution & Laws
+
+The constitution is stored in the DB and seeded from `templates/default_constitution.json`.
+
+Laws are managed via CLI and require votes to pass/amend/repeal. Law types:
+- **standing**: persistent laws (default)
+- **temporary**: expire after a set time
+- **emergency**: active only during emergency
+- **constitutional amendment**: requires supermajority + Ultimate Bruce approval
+
+## Emergency Mode
+
+Triggered automatically by keywords in session (e.g., "suicide", "kill", "end") or via command.
+
+Behavior in emergency:
+- **Ultimate Bruce speaks first and has absolute veto**
+- Long-Term weight doubles
+- Short-Term cannot initiate actions
+- System suggests grounding steps and contact persons
+- Actions logged immutably
+
+## Custom Bruces (Temporary Extraordinary Seats)
+
+Create up to 2 custom seats active at once with special rules. Example:
+
+```
+Name: Project Bruce
+Primary Function: Focus on project delivery
+Problem Statement: Team needs clear direction
+Values: Clarity, efficiency, results
+Tone: Direct and action-oriented
+Voting Power: 2
+Expiry: 14 days
+```
+
+Rules:
+- Max 2 active custom seats
+- Combined voting power ≤ 3 (Long-Term weight)
+- Ultimate Bruce can silence instantly
+- Auto-expires based on condition (time, event, decision, or manual)
+
+## Testing & Linting
+
+```bash
+pytest
+ruff parliament_of_bruce/
+black parliament_of_bruce/
+isort parliament_of_bruce/
+```
+
+## Change Storage Path
+
+Use `--db PATH` with any command to override default DB location (`~/.parliament_of_bruce/parliament.db`).
+
+## Data Migration
+
+If you have an old `parliament_data.json`, it will be imported automatically on first `pob init`.
+
+## Architecture
+
+- **DB**: SQLite with SQLAlchemy ORM
+- **Validation**: Pydantic models
+- **CLI**: Typer with Rich for styling
+- **Services**: Separated logic for sessions, votes, laws, customs, analytics
+- **Tests**: Pytest with in-memory SQLite fixtures
+
+---
+
+MIT License. See LICENSE for details.
 └── parliament_of_bruce/
     ├── __init__.py
     ├── models.py      # Data structures

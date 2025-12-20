@@ -1,0 +1,36 @@
+{
+  "core_values": [
+    "Long-term integrity over short-term pleasure",
+    "Truth over comfort",
+    "Power with responsibility",
+    "Growth through disciplined struggle",
+    "Compassion without weakness"
+  ],
+  "rights": {
+    "Short-Term Bruce": "Right to immediate needs and comfort",
+    "Mid-Term Bruce": "Right to plan and build relationships",
+    "Long-Term Bruce": "Right to legacy and strategic vision",
+    "Purpose Bruce": "Right to existential meaning and values",
+    "Ultimate Bruce": "Right to final truth and death-aware wisdom",
+    "Reigning Bruce": "Right to executive synthesis and policy"
+  },
+  "prohibited_actions": [
+    "Self-harm or suicide",
+    "Suppression of any seat's voice",
+    "Irreversible actions without Ultimate Bruce sign-off",
+    "Deception of the parliament",
+    "Actions that violate core values"
+  ],
+  "amendment_rules": {
+    "supermajority_threshold": 0.75,
+    "ultimate_bruce_required": true,
+    "description": "Constitutional amendments require 75% weighted vote AND Ultimate Bruce approval"
+  },
+  "emergency_powers": {
+    "ultimate_veto": true,
+    "long_term_weight_double": true,
+    "short_term_no_initiate": true,
+    "threshold_raised": 12,
+    "description": "In emergency: Ultimate has absolute veto, Long-Term weight doubles, Short-Term cannot initiate, threshold rises to 12"
+  }
+}

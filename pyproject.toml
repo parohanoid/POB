@@ -1,0 +1,41 @@
+[build-system]
+requires = ["setuptools>=65.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "parliament-of-bruce"
+version = "1.0.0"
+description = "Internal republic journaling CLI"
+authors = [{name = "Rohan Panchal", email = "parohanoid@gmail.com"}]
+license = {text = "MIT"}
+requires-python = ">=3.11"
+dependencies = [
+    "typer[all]>=0.9.0,<1.0.0",
+    "rich>=13.0.0",
+    "sqlalchemy>=2.0.0",
+    "pydantic>=1.10.0,<2.0.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.0.0",
+    "black>=23.0.0",
+    "ruff>=0.1.0",
+    "isort>=5.12.0",
+]
+
+[project.scripts]
+pob = "parliament_of_bruce.cli:app"
+
+[tool.black]
+line-length = 100
+target-version = ['py311']
+
+[tool.isort]
+profile = "black"
+line_length = 100
+
+[tool.ruff]
+line-length = 100
+select = ["E", "F", "W", "I"]
+ignore = ["E501"]

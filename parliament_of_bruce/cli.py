@@ -1,592 +1,554 @@
+"""Parliament of Bruce CLI - Internal Republic Journaling System."""
+
+import json
+import os
+from datetime import datetime
+from typing import Optional
+
 import typer
 from rich.console import Console
-from rich.panel import Panel
-from datetime import datetime, timedelta
-from .storage import Storage
-from .services import ParliamentService
 
-app = typer.Typer(help="Parliament of Bruce - Psychological journaling and decision-making system")
+from .config import DEFAULT_CONSTITUTION_PATH
+from .db import (
+    Base,
+    Constitution,
+    CustomBruce,
+    ReigningBruce,
+    Seat,
+    Session,
+    get_engine,
+    get_session,
+)
+from .services.analytics_service import AnalyticsService
+from .services.custom_bruce_service import CustomBruceService
+from .services.session_service import SessionService
+from .services.vote_service import VoteService
+from .storage import check_and_migrate_json, ensure_data_dir, get_db_path
+from .ui.prompts import (
+    SEAT_CONFIG,
+    print_emergency_mode,
+    print_error,
+    print_grounding_steps,
+    print_header,
+    print_info,
+    print_session_header,
+    print_success,
+    print_vote_results,
+    print_warning,
+    prompt_seat_statement,
+    prompt_vote,
+)
+
+app = typer.Typer(
+    help="Parliament of Bruce - Internal Republic Journaling & Governance",
+    no_args_is_help=True,
+)
 console = Console()
 
 
-def get_service() -> ParliamentService:
-    """Get parliament service instance."""
-    storage = Storage()
-    return ParliamentService(storage)
-
-
 @app.command()
-def init():
+def init(db: Optional[str] = typer.Option(None, "--db", help="Database path")):
     """Initialize the Parliament of Bruce system."""
-    service = get_service()
-    
-    console.print(Panel.fit(
-        "[bold cyan]Parliament of Bruce Initialized[/bold cyan]\n\n"
-        "Five permanent seats established:\n"
-        "  • Short-Term Bruce (1 vote)\n"
-        "  • Mid-Term Bruce (2 votes)\n"
-        "  • Long-Term Bruce (3 votes)\n"
-        "  • Purpose Bruce (4 votes)\n"
-        "  • Ultimate Bruce (5 votes)\n\n"
-        "[yellow]No Reigning Bruce yet. Create one with:[/yellow]\n"
-        "  pob reign new",
-        title="🏛️  Parliament Established"
-    ))
-    
-    console.print(f"\n[dim]Data stored in: {service.storage.data_dir}[/dim]")
+    db_path = get_db_path(db)
+    ensure_data_dir()
 
+    # Check for migration
+    check_and_migrate_json(db_path)
 
-@app.command()
-def status():
-    """Show current parliament status."""
-    service = get_service()
-    
-    if not service.state.reigning_bruce:
-        console.print("[yellow]⚠️  No Reigning Bruce currently active[/yellow]")
-        console.print("Create one with: [cyan]pob reign new[/cyan]")
+    # Create tables
+    engine = get_engine(db_path)
+    Base.metadata.create_all(engine)
+
+    session = get_session(db_path)
+
+    # Check if already initialized
+    existing_seats = session.query(Seat).count()
+    if existing_seats > 0:
+        print_info("System already initialized")
+        session.close()
         return
-    
-    bruce = service.state.reigning_bruce
-    start = datetime.fromisoformat(bruce.start_date)
-    duration = (datetime.now() - start).days
-    
-    # Status panel
-    console.print(Panel.fit(
-        f"[bold cyan]{bruce.name}[/bold cyan]\n\n"
-        f"Born: {start.strftime('%Y-%m-%d')}\n"
-        f"Reason: {bruce.reason_born}\n"
-        f"Duration: {duration} days\n"
-        f"Sessions: {bruce.session_count}",
-        title="👑 Current Reigning Bruce"
-    ))
-    
-    # Recent entries
-    recent = service.get_recent_entries(3)
-    if recent:
-        console.print("\n[bold]Recent Sessions:[/bold]")
-        for entry in recent:
-            date = datetime.fromisoformat(entry.date).strftime('%Y-%m-%d')
-            console.print(f"  • {date} - {entry.session_type}")
-    
-    # Warnings
-    warnings = service.generate_warnings()
-    console.print("\n[bold]Psychological Analysis:[/bold]")
-    for warning in warnings:
-        console.print(f"  {warning}")
+
+    # Create default seats
+    seats_data = [
+        {
+            "name": "Short-Term Bruce",
+            "votes": 1,
+            "description": "Focused on immediate needs, pleasure, survival instincts",
+        },
+        {
+            "name": "Mid-Term Bruce",
+            "votes": 2,
+            "description": "Planning weeks/months ahead, career moves, relationships",
+        },
+        {
+            "name": "Long-Term Bruce",
+            "votes": 3,
+            "description": "Years-ahead vision, legacy building, strategic positioning",
+        },
+        {
+            "name": "Purpose Bruce",
+            "votes": 4,
+            "description": "Life meaning, values alignment, existential direction",
+        },
+        {
+            "name": "Ultimate Bruce",
+            "votes": 5,
+            "description": "Death-aware wisdom, final chapter perspective, truth above all",
+        },
+        {
+            "name": "Reigning Bruce",
+            "votes": 3,
+            "description": "Current identity version, executive and synthesizer",
+        },
+    ]
+
+    for seat_data in seats_data:
+        seat = Seat(
+            name=seat_data["name"],
+            votes=seat_data["votes"],
+            description=seat_data["description"],
+            is_permanent=True,
+            active=True,
+        )
+        session.add(seat)
+
+    # Load and create constitution
+    try:
+        with open(DEFAULT_CONSTITUTION_PATH, "r") as f:
+            const_data = json.load(f)
+            constitution = Constitution(
+                core_values=const_data["core_values"],
+                rights=const_data["rights"],
+                prohibited_actions=const_data["prohibited_actions"],
+                amendment_rules=const_data["amendment_rules"],
+                emergency_powers=const_data["emergency_powers"],
+            )
+            session.add(constitution)
+    except FileNotFoundError:
+        console.print("[yellow]Warning: default_constitution.json not found[/yellow]")
+
+    session.commit()
+    session.close()
+
+    print_header("Parliament of Bruce Initialized", f"Database: {db_path}")
+    print_success("System ready for first session")
 
 
 @app.command()
-def session(
-    session_type: str = typer.Argument("daily", help="Session type: daily, weekly, monthly")
+def status(db: Optional[str] = typer.Option(None, "--db", help="Database path")):
+    """Show current parliament status."""
+    db_path = get_db_path(db)
+    if not os.path.exists(db_path):
+        print_error("System not initialized. Run 'pob init' first")
+        return
+
+    db_session = get_session(db_path)
+    reigning = db_session.query(ReigningBruce).filter(ReigningBruce.end_date == None).first()
+    if not reigning:
+        print_warning("No Reigning Bruce currently active")
+        db_session.close()
+        return
+
+    print_header("Current Parliament Status", reigning.name)
+    console.print("\n[bold cyan]Reigning Bruce:[/bold cyan]")
+    console.print(f"  Name: {reigning.name}")
+    console.print(f"  Started: {reigning.start_date[:10]}")
+
+    recent_sessions = db_session.query(Session).order_by(Session.id.desc()).limit(3).all()
+    if recent_sessions:
+        console.print("\n[bold cyan]Recent Sessions:[/bold cyan]")
+        for s in reversed(recent_sessions):
+            console.print(f"  • {s.date[:10]} ({s.session_type})")
+
+    custom_bruces = db_session.query(CustomBruce).filter_by(active=True).all()
+    if custom_bruces:
+        console.print("\n[bold cyan]Active Custom Bruces:[/bold cyan]")
+        for cb in custom_bruces:
+            console.print(f"  • {cb.name} (votes: {cb.votes})")
+
+    db_session.close()
+
+
+@app.command()
+def timeline(db: Optional[str] = typer.Option(None, "--db", help="Database path")):
+    """Display timeline of all Bruce identities."""
+    db_path = get_db_path(db)
+    if not os.path.exists(db_path):
+        print_error("System not initialized. Run 'pob init' first")
+        return
+
+    db_session = get_session(db_path)
+    all_bruces = db_session.query(ReigningBruce).order_by(ReigningBruce.start_date).all()
+
+    if not all_bruces:
+        print_warning("No Bruce history")
+        db_session.close()
+        return
+
+    print_header("Timeline of Bruce Identities")
+    for i, bruce in enumerate(all_bruces, 1):
+        console.print(f"\n{i}. [bold]{bruce.name}[/bold]")
+        console.print(f"   Started: {bruce.start_date[:10]}")
+        if bruce.end_date:
+            console.print(f"   Ended: {bruce.end_date[:10]}")
+        else:
+            console.print("[green]   Currently Reigning[/green]")
+
+    db_session.close()
+
+
+@app.command()
+def reign_new(
+    name: str = typer.Option(..., "--name", help="Name for new Bruce"),
+    reason: str = typer.Option(..., "--reason", help="Reason for new Bruce"),
+    db: Optional[str] = typer.Option(None, "--db", help="Database path"),
+):
+    """Create a new Reigning Bruce."""
+    db_path = get_db_path(db)
+    if not os.path.exists(db_path):
+        print_error("System not initialized. Run 'pob init' first")
+        return
+
+    db_session = get_session(db_path)
+    new_bruce = ReigningBruce(
+        name=name,
+        start_date=datetime.now().isoformat(),
+        reason_born=reason,
+    )
+    db_session.add(new_bruce)
+    db_session.commit()
+    print_success(f"{new_bruce.name} now reigns")
+    db_session.close()
+
+
+@app.command()
+def session_cmd(
+    session_type: str = typer.Argument("daily", help="daily or weekly"),
+    db: Optional[str] = typer.Option(None, "--db", help="Database path"),
 ):
     """Conduct a parliament session."""
-    service = get_service()
-    
-    if not service.state.reigning_bruce:
-        console.print("[yellow]⚠️  No Reigning Bruce active. Create one first:[/yellow]")
-        console.print("  pob reign new")
+    db_path = get_db_path(db)
+    if not os.path.exists(db_path):
+        print_error("System not initialized. Run 'pob init' first")
         return
+
+    db_session = get_session(db_path)
+    reigning = db_session.query(ReigningBruce).filter(ReigningBruce.end_date == None).first()
+    if not reigning:
+        print_error("No Reigning Bruce active. Create one with 'pob reign new'")
+        db_session.close()
+        return
+
+    print_session_header(session_type, reigning.name)
+
+    statements = {}
+    for seat_name, cfg in SEAT_CONFIG.items():
+        if seat_name != "Reigning Bruce":
+            statements[seat_name.lower().replace(" ", "_")] = prompt_seat_statement(seat_name)
+
+    console.print("[cyan]● Reigning Bruce[/cyan]")
+    console.print("[dim]Synthesize the parliament's wisdom:[/dim]")
+    reigning_statement = input("> ").strip()
+    statements["reigning"] = reigning_statement
+
+    console.print("\n[green]Final Policy[/green]")
+    console.print("[dim]What is today's governing policy?[/dim]")
+    final_policy = input("> ").strip()
+
+    session_service = SessionService(db_session)
+    full_text = " ".join(statements.values()) + " " + final_policy
     
-    console.print(Panel.fit(
-        f"[bold cyan]{session_type.upper()} PARLIAMENT SESSION[/bold cyan]\n"
-        f"Reigning Bruce: {service.state.reigning_bruce.name}",
-        title="🏛️  Parliament Convenes"
-    ))
-    
-    responses = {}
-    
-    # Collect from each seat
-    seats = [
-        ("short_term", "Short-Term Bruce", "What does your immediate self need today?"),
-        ("mid_term", "Mid-Term Bruce", "What should you focus on this week/month?"),
-        ("long_term", "Long-Term Bruce", "What moves you toward your 5-year vision?"),
-        ("purpose", "Purpose Bruce", "How does today align with your deepest values?"),
-        ("ultimate", "Ultimate Bruce", "What truth must be spoken from the end of your life?"),
-    ]
-    
-    for key, name, prompt in seats:
-        console.print(f"\n[bold cyan]{name}[/bold cyan]")
-        response = typer.prompt(prompt)
-        responses[key] = response
-    
-    # Reigning Bruce summary
-    console.print(f"\n[bold cyan]Reigning Bruce ({service.state.reigning_bruce.name})[/bold cyan]")
-    responses["reigning"] = typer.prompt("Synthesize the parliament's wisdom")
-    
-    # Final policy
-    console.print(f"\n[bold green]Final Policy[/bold green]")
-    responses["final_policy"] = typer.prompt("What is today's governing policy?")
-    
-    # Create entry
-    entry = service.create_session(session_type, responses)
-    
-    console.print("\n[green]✓ Session recorded successfully[/green]")
-    console.print(f"[dim]Entry saved: {datetime.fromisoformat(entry.date).strftime('%Y-%m-%d %H:%M')}[/dim]")
+    if session_service.check_emergency_trigger(full_text):
+        print_emergency_mode()
+        session_service.log_emergency(
+            trigger_text=full_text[:200],
+            actions_taken="Emergency mode activated",
+            who_initiated="System (keyword detection)",
+        )
+
+    session_id = session_service.create_session(
+        date=datetime.now().isoformat(),
+        session_type=session_type,
+        statements=statements,
+        final_policy=final_policy,
+        reigning_bruce_id=reigning.id,
+    )
+
+    print_success(f"Session recorded (ID: {session_id})")
+    db_session.close()
 
 
 @app.command()
-def vote(topic: str = typer.Argument(..., help="Topic to vote on")):
-    """Vote on a decision through parliament."""
-    service = get_service()
-    
-    if not service.state.reigning_bruce:
-        console.print("[yellow]⚠️  No Reigning Bruce active[/yellow]")
+def vote(
+    topic: str = typer.Argument(..., help="Topic to vote on"),
+    options: Optional[str] = typer.Option(None, "--options", help="Comma-separated options"),
+    db: Optional[str] = typer.Option(None, "--db", help="Database path"),
+):
+    """Conduct a vote on a decision."""
+    db_path = get_db_path(db)
+    if not os.path.exists(db_path):
+        print_error("System not initialized. Run 'pob init' first")
         return
-    
-    console.print(Panel.fit(
-        f"[bold cyan]VOTING SESSION[/bold cyan]\n\n"
-        f"Topic: {topic}\n\n"
-        f"[yellow]Vote YES or NO for each seat[/yellow]",
-        title="🗳️  Parliament Votes"
-    ))
-    
+
+    db_session = get_session(db_path)
+
+    print_header("Vote", topic)
+
     votes = {}
-    seats = [
-        ("ShortTerm", "Short-Term Bruce", 1),
-        ("MidTerm", "Mid-Term Bruce", 2),
-        ("LongTerm", "Long-Term Bruce", 3),
-        ("Purpose", "Purpose Bruce", 4),
-        ("Ultimate", "Ultimate Bruce", 5),
-        ("Reigning", f"Reigning Bruce ({service.state.reigning_bruce.name})", 3),
+    seats_to_vote = [
+        ("Short-Term Bruce", 1),
+        ("Mid-Term Bruce", 2),
+        ("Long-Term Bruce", 3),
+        ("Purpose Bruce", 4),
+        ("Ultimate Bruce", 5),
+        ("Reigning Bruce", 3),
     ]
-    
-    for key, name, weight in seats:
-        console.print(f"\n[cyan]{name}[/cyan] ({weight} votes)")
-        vote = typer.prompt("Vote (yes/no)").strip().lower()
-        votes[key] = vote
-    
-    # Process decision
-    decision = service.vote_on_decision(topic, ["Yes", "No"], votes)
-    
-    # Display results
-    yes_score = sum(service.VOTE_WEIGHTS[k] for k, v in votes.items() if v in ["yes", "y", "1"])
-    no_score = service.MAX_SCORE - yes_score
-    
-    console.print("\n" + "="*60)
-    console.print(f"\n[bold]RESULTS:[/bold]")
-    console.print(f"  Yes: {yes_score}/{service.MAX_SCORE}")
-    console.print(f"  No: {no_score}/{service.MAX_SCORE}")
-    console.print(f"  Threshold: {service.PASSING_THRESHOLD}")
-    
-    if decision.passed:
-        console.print(f"\n[bold green]✓ DECISION PASSED[/bold green]")
-    else:
-        console.print(f"\n[bold red]✗ DECISION FAILED[/bold red]")
-    
-    console.print("\n" + "="*60)
+
+    for seat_name, weight in seats_to_vote:
+        vote_val = prompt_vote(seat_name, weight)
+        votes[seat_name] = vote_val
+
+    vote_service = VoteService(db_session)
+    result = vote_service.calculate_vote_result(votes)
+
+    vote_service.create_decision(
+        topic=topic,
+        options=options.split(",") if options else ["yes", "no"],
+        votes=votes,
+    )
+
+    print_vote_results(
+        topic=topic,
+        votes=votes,
+        passed=result["passed"],
+        total_yes=result["total_yes"],
+        total_no=result["total_no"],
+    )
+
+    db_session.close()
 
 
 @app.command()
-def rebirth():
-    """Trigger a Bruce rebirth (identity death and renewal)."""
-    service = get_service()
-    
-    if not service.state.reigning_bruce:
-        console.print("[yellow]No Bruce to rebirth. Create first Bruce with 'pob reign new'[/yellow]")
+def rebirth(db: Optional[str] = typer.Option(None, "--db", help="Database path")):
+    """Trigger a rebirth (major identity shift)."""
+    db_path = get_db_path(db)
+    if not os.path.exists(db_path):
+        print_error("System not initialized. Run 'pob init' first")
         return
-    
-    console.print(Panel.fit(
-        "[bold red]REBIRTH PROTOCOL[/bold red]\n\n"
-        "A significant event has triggered identity death.\n"
-        "The current Bruce must exit with a final report.",
-        title="💀 Identity Transition"
-    ))
-    
-    # Exit report
-    console.print(f"\n[bold]Current Bruce:[/bold] {service.state.reigning_bruce.name}")
-    console.print(f"Duration: {service.state.reigning_bruce.session_count} sessions")
-    
-    exit_report = typer.prompt("\nExit Report: What killed this version of Bruce?")
-    service.end_reigning_bruce(exit_report)
-    
-    console.print("\n[green]✓ Bruce has been laid to rest[/green]")
-    
-    # Create new Bruce
+
+    db_session = get_session(db_path)
+
+    print_header("Rebirth Protocol", "🔄")
+
+    current_reigning = db_session.query(ReigningBruce).filter(ReigningBruce.end_date == None).first()
+
+    if current_reigning:
+        console.print(f"\n[bold]Current Bruce:[/bold] {current_reigning.name}")
+        console.print("[dim]Prepare exit report for this identity...[/dim]")
+        exit_report = input("Exit Report: ").strip()
+
+        current_reigning.end_date = datetime.now().isoformat()
+        current_reigning.exit_report = exit_report
+        db_session.commit()
+
+        print_success("Previous Bruce has been archived")
+
     console.print("\n[bold cyan]Birth of New Bruce[/bold cyan]")
-    new_name = typer.prompt("Name for new Bruce")
-    reason = typer.prompt("What event birthed this new identity?")
-    
-    new_bruce = service.create_reigning_bruce(new_name, reason)
-    
-    console.print(f"\n[bold green]✓ {new_bruce.name} is now reigning[/bold green]")
+    new_name = input("Name for new Bruce: ").strip()
+    reason = input("Reason for this rebirth: ").strip()
+
+    new_bruce = ReigningBruce(
+        name=new_name,
+        start_date=datetime.now().isoformat(),
+        reason_born=reason,
+    )
+    db_session.add(new_bruce)
+    db_session.commit()
+
+    print_success(f"{new_bruce.name} is now reigning")
+
+    db_session.close()
 
 
 @app.command()
-def renounce():
-    """Voluntarily end current Bruce's reign."""
-    service = get_service()
-    
-    if not service.state.reigning_bruce:
-        console.print("[yellow]No Bruce to renounce[/yellow]")
+def renounce(db: Optional[str] = typer.Option(None, "--db", help="Database path")):
+    """Voluntarily renounce the current Reigning Bruce."""
+    db_path = get_db_path(db)
+    if not os.path.exists(db_path):
+        print_error("System not initialized. Run 'pob init' first")
         return
-    
-    console.print(f"[bold]Current Bruce:[/bold] {service.state.reigning_bruce.name}")
-    confirm = typer.confirm("Are you sure you want to renounce this identity?")
-    
-    if not confirm:
-        console.print("Renunciation cancelled")
+
+    db_session = get_session(db_path)
+
+    reigning = db_session.query(ReigningBruce).filter(ReigningBruce.end_date == None).first()
+    if not reigning:
+        print_warning("No Reigning Bruce to renounce")
+        db_session.close()
         return
-    
-    exit_report = typer.prompt("Final statement for this Bruce")
-    service.end_reigning_bruce(exit_report)
-    
-    console.print("[green]✓ Bruce renounced[/green]")
+
+    console.print(f"[bold]Renouncing:[/bold] {reigning.name}")
+    final_statement = input("Final statement: ").strip()
+
+    reigning.end_date = datetime.now().isoformat()
+    reigning.exit_report = final_statement
+    db_session.commit()
+
+    print_success("Bruce renounced")
+
+    db_session.close()
 
 
 @app.command()
-def reign(action: str = typer.Argument("new", help="Action: new")):
-    """Create a new Reigning Bruce."""
-    service = get_service()
-    
-    if action != "new":
-        console.print("[red]Unknown action. Use: pob reign new[/red]")
+def emergency(db: Optional[str] = typer.Option(None, "--db", help="Database path")):
+    """Trigger emergency mode."""
+    db_path = get_db_path(db)
+    if not os.path.exists(db_path):
+        print_error("System not initialized. Run 'pob init' first")
         return
-    
-    if service.state.reigning_bruce:
-        console.print(f"[yellow]Current Bruce:[/yellow] {service.state.reigning_bruce.name}")
-        replace = typer.confirm("Replace current Bruce?")
-        if replace:
-            exit_report = typer.prompt("Exit report for current Bruce")
-            service.end_reigning_bruce(exit_report)
-    
-    name = typer.prompt("Name for new Reigning Bruce")
-    reason = typer.prompt("Reason for this new identity")
-    
-    new_bruce = service.create_reigning_bruce(name, reason)
-    console.print(f"\n[bold green]✓ {new_bruce.name} now reigns[/bold green]")
+
+    print_emergency_mode()
+    print_grounding_steps()
+
+    db_session = get_session(db_path)
+    session_service = SessionService(db_session)
+    session_service.log_emergency(
+        trigger_text="Manual emergency activation",
+        actions_taken="Emergency mode initiated by user",
+        who_initiated="User command",
+    )
+    db_session.close()
 
 
 @app.command()
-def timeline():
-    """Show timeline of all Bruce identities."""
-    service = get_service()
-    
-    if not service.state.bruce_history and not service.state.reigning_bruce:
-        console.print("[yellow]No Bruce history yet[/yellow]")
+def custom_create(db: Optional[str] = typer.Option(None, "--db", help="Database path")):
+    """Create a custom Bruce."""
+    db_path = get_db_path(db)
+    if not os.path.exists(db_path):
+        print_error("System not initialized. Run 'pob init' first")
         return
-    
-    console.print(Panel.fit("[bold cyan]Timeline of Bruce Identities[/bold cyan]", title="📜 History"))
-    
-    all_bruces = service.state.bruce_history.copy()
-    if service.state.reigning_bruce:
-        all_bruces.append(service.state.reigning_bruce)
-    
-    for i, bruce in enumerate(all_bruces, 1):
-        start = datetime.fromisoformat(bruce.start_date).strftime('%Y-%m-%d')
-        
-        if bruce.end_date:
-            end = datetime.fromisoformat(bruce.end_date).strftime('%Y-%m-%d')
-            status = f"[dim]{start} → {end}[/dim]"
-        else:
-            status = f"[green]{start} → Present[/green]"
-        
-        console.print(f"\n{i}. [bold]{bruce.name}[/bold]")
-        console.print(f"   {status}")
-        console.print(f"   Reason: {bruce.reason_born}")
-        console.print(f"   Sessions: {bruce.session_count}")
-        
-        if bruce.exit_report:
-            console.print(f"   Exit: {bruce.exit_report}")
+
+    db_session = get_session(db_path)
+
+    print_header("Create Custom Bruce")
+
+    console.print("\n[bold]Fill out the custom Bruce template:[/bold]")
+    name = input("Name: ").strip()
+    primary_function = input("Primary function: ").strip()
+    problem_statement = input("Problem statement: ").strip()
+    values = input("Values (comma-separated): ").strip()
+    deliberately_ignore = input("Deliberately ignore: ").strip()
+    tone_of_voice = input("Tone of voice: ").strip()
+    allowed_emotional_range = input("Allowed emotional range: ").strip()
+    decision_bias = input("Decision bias: ").strip()
+    votes = int(input("Voting power (0-3): ").strip() or "2")
+    expiry_condition = input("Expiry condition (manual/time-based/event-based): ").strip() or "manual"
+    expiry_value = input("Expiry value (e.g., '14' for 14 days): ").strip()
+
+    service = CustomBruceService(db_session)
+
+    try:
+        custom_id = service.create_custom_bruce(
+            name=name,
+            primary_function=primary_function,
+            problem_statement=problem_statement,
+            values=values,
+            deliberately_ignore=deliberately_ignore,
+            tone_of_voice=tone_of_voice,
+            allowed_emotional_range=allowed_emotional_range,
+            decision_bias=decision_bias,
+            votes=votes,
+            expiry_condition=expiry_condition,
+            expiry_value=expiry_value,
+        )
+        print_success(f"Custom Bruce '{name}' created (ID: {custom_id})")
+    except ValueError as e:
+        print_error(str(e))
+
+    db_session.close()
 
 
 @app.command()
-def read(
-    date: str = typer.Option(None, help="Specific date (YYYY-MM-DD) or 'latest'"),
-    count: int = typer.Option(10, help="Number of recent entries to show"),
-    full: bool = typer.Option(False, help="Show full entries (default shows summaries)")
+def custom_list(db: Optional[str] = typer.Option(None, "--db", help="Database path")):
+    """List active custom Bruces."""
+    db_path = get_db_path(db)
+    if not os.path.exists(db_path):
+        print_error("System not initialized. Run 'pob init' first")
+        return
+
+    db_session = get_session(db_path)
+    service = CustomBruceService(db_session)
+
+    customs = service.list_active_customs()
+    if not customs:
+        print_warning("No active custom Bruces")
+        db_session.close()
+        return
+
+    print_header("Active Custom Bruces")
+
+    for custom in customs:
+        console.print(f"\n[bold]{custom.name}[/bold]")
+        console.print(f"  Function: {custom.primary_function}")
+        console.print(f"  Voting power: {custom.votes}")
+        console.print(f"  Expiry: {custom.expiry_condition} ({custom.expiry_value})")
+
+    db_session.close()
+
+
+@app.command()
+def custom_dismiss(
+    name: str = typer.Argument(..., help="Name of custom Bruce"),
+    db: Optional[str] = typer.Option(None, "--db", help="Database path"),
 ):
-    """Read journal entries."""
-    service = get_service()
-    
-    if not service.state.journal_entries:
-        console.print("[yellow]No journal entries yet. Create one with 'pob session daily'[/yellow]")
+    """Dismiss a custom Bruce."""
+    db_path = get_db_path(db)
+    if not os.path.exists(db_path):
+        print_error("System not initialized. Run 'pob init' first")
         return
-    
-    entries = []
-    
-    # Filter by date if specified
-    if date:
-        if date.lower() == "latest":
-            entries = [service.state.journal_entries[-1]]
-        else:
-            # Parse date and find matching entries
-            target_date = date
-            entries = [e for e in service.state.journal_entries 
-                      if e.date.startswith(target_date)]
-            
-            if not entries:
-                console.print(f"[yellow]No entries found for {date}[/yellow]")
-                return
+
+    db_session = get_session(db_path)
+    service = CustomBruceService(db_session)
+
+    if service.dismiss_by_name(name):
+        print_success(f"Custom Bruce '{name}' dismissed")
     else:
-        # Show most recent entries
-        entries = service.state.journal_entries[-count:]
-    
-    # Display entries
-    for i, entry in enumerate(entries):
-        date_obj = datetime.fromisoformat(entry.date)
-        date_str = date_obj.strftime('%Y-%m-%d %H:%M')
-        
-        if full:
-            # Full detailed view
-            console.print("\n" + "="*70)
-            console.print(Panel.fit(
-                f"[bold cyan]{entry.session_type.upper()} SESSION[/bold cyan]\n"
-                f"Date: {date_str}\n"
-                f"Reigning Bruce: {entry.reigning_bruce_name}",
-                title=f"📔 Entry {len(service.state.journal_entries) - len(entries) + i + 1}"
-            ))
-            
-            console.print(f"\n[bold cyan]Short-Term Bruce:[/bold cyan]")
-            console.print(entry.short_term)
-            
-            console.print(f"\n[bold cyan]Mid-Term Bruce:[/bold cyan]")
-            console.print(entry.mid_term)
-            
-            console.print(f"\n[bold cyan]Long-Term Bruce:[/bold cyan]")
-            console.print(entry.long_term)
-            
-            console.print(f"\n[bold cyan]Purpose Bruce:[/bold cyan]")
-            console.print(entry.purpose)
-            
-            console.print(f"\n[bold cyan]Ultimate Bruce:[/bold cyan]")
-            console.print(entry.ultimate)
-            
-            console.print(f"\n[bold green]Reigning Bruce ({entry.reigning_bruce_name}):[/bold green]")
-            console.print(entry.reigning)
-            
-            console.print(f"\n[bold yellow]Final Policy:[/bold yellow]")
-            console.print(entry.final_policy)
-            
-            if entry.decisions_voted_on:
-                console.print(f"\n[bold]Decisions Voted:[/bold]")
-                for dec in entry.decisions_voted_on:
-                    console.print(f"  • {dec.topic}: {'PASSED' if dec.passed else 'FAILED'}")
-        else:
-            # Summary view
-            console.print(f"\n[bold]{date_str}[/bold] - {entry.session_type}")
-            console.print(f"  Bruce: {entry.reigning_bruce_name}")
-            console.print(f"  Policy: {entry.final_policy[:80]}{'...' if len(entry.final_policy) > 80 else ''}")
-    
-    # Show usage tip if in summary mode
-    if not full and entries:
-        console.print(f"\n[dim]Showing {len(entries)} entries (summaries). Use --full flag for complete entries.[/dim]")
-        console.print(f"[dim]Examples:[/dim]")
-        console.print(f"[dim]  pob read --date 2025-12-14 --full[/dim]")
-        console.print(f"[dim]  pob read --date latest --full[/dim]")
-        console.print(f"[dim]  pob read --count 20[/dim]")
+        print_error(f"Custom Bruce '{name}' not found")
+
+    db_session.close()
 
 
 @app.command()
-def search(
-    query: str = typer.Argument(..., help="Search term to find in entries"),
-    seat: str = typer.Option(None, help="Search specific seat: short_term, mid_term, long_term, purpose, ultimate, reigning, policy")
+def analytics(
+    days: int = typer.Option(7, "--days", help="Period in days"),
+    db: Optional[str] = typer.Option(None, "--db", help="Database path"),
 ):
-    """Search journal entries for specific content."""
-    service = get_service()
-    
-    if not service.state.journal_entries:
-        console.print("[yellow]No journal entries to search[/yellow]")
+    """Show analytics and dominance scores."""
+    db_path = get_db_path(db)
+    if not os.path.exists(db_path):
+        print_error("System not initialized. Run 'pob init' first")
         return
-    
-    query_lower = query.lower()
-    matches = []
-    
-    for entry in service.state.journal_entries:
-        fields_to_search = {}
-        
-        if seat:
-            # Search specific seat
-            if seat == "short_term":
-                fields_to_search = {"Short-Term": entry.short_term}
-            elif seat == "mid_term":
-                fields_to_search = {"Mid-Term": entry.mid_term}
-            elif seat == "long_term":
-                fields_to_search = {"Long-Term": entry.long_term}
-            elif seat == "purpose":
-                fields_to_search = {"Purpose": entry.purpose}
-            elif seat == "ultimate":
-                fields_to_search = {"Ultimate": entry.ultimate}
-            elif seat == "reigning":
-                fields_to_search = {"Reigning": entry.reigning}
-            elif seat == "policy":
-                fields_to_search = {"Policy": entry.final_policy}
-        else:
-            # Search all fields
-            fields_to_search = {
-                "Short-Term": entry.short_term,
-                "Mid-Term": entry.mid_term,
-                "Long-Term": entry.long_term,
-                "Purpose": entry.purpose,
-                "Ultimate": entry.ultimate,
-                "Reigning": entry.reigning,
-                "Policy": entry.final_policy
-            }
-        
-        # Check for matches
-        found_in = []
-        for field_name, field_content in fields_to_search.items():
-            if query_lower in field_content.lower():
-                # Get context around match
-                index = field_content.lower().index(query_lower)
-                start = max(0, index - 40)
-                end = min(len(field_content), index + len(query) + 40)
-                context = field_content[start:end]
-                if start > 0:
-                    context = "..." + context
-                if end < len(field_content):
-                    context = context + "..."
-                
-                found_in.append((field_name, context))
-        
-        if found_in:
-            matches.append((entry, found_in))
-    
-    # Display results
-    if not matches:
-        console.print(f"[yellow]No matches found for '{query}'[/yellow]")
-        return
-    
-    console.print(f"\n[bold]Found {len(matches)} entries containing '{query}':[/bold]\n")
-    
-    for entry, found_in in matches:
-        date_obj = datetime.fromisoformat(entry.date)
-        date_str = date_obj.strftime('%Y-%m-%d')
-        
-        console.print(f"[cyan]{date_str}[/cyan] - {entry.session_type} - {entry.reigning_bruce_name}")
-        for field_name, context in found_in:
-            console.print(f"  [{field_name}] {context}")
-        console.print()
 
+    db_session = get_session(db_path)
+    service = AnalyticsService(db_session)
 
-@app.command()
-def stats():
-    """Show statistics about your parliament usage."""
-    service = get_service()
-    
-    total_entries = len(service.state.journal_entries)
-    total_decisions = len(service.state.decisions)
-    total_bruces = len(service.state.bruce_history) + (1 if service.state.reigning_bruce else 0)
-    
-    if total_entries == 0:
-        console.print("[yellow]No data yet. Start with 'pob session daily'[/yellow]")
-        return
-    
-    # Calculate date range
-    first_entry = service.state.journal_entries[0]
-    last_entry = service.state.journal_entries[-1]
-    first_date = datetime.fromisoformat(first_entry.date)
-    last_date = datetime.fromisoformat(last_entry.date)
-    days_active = (last_date - first_date).days + 1
-    
-    # Session type breakdown
-    session_types = {}
-    for entry in service.state.journal_entries:
-        session_types[entry.session_type] = session_types.get(entry.session_type, 0) + 1
-    
-    # Decision success rate
-    passed = sum(1 for d in service.state.decisions if d.passed)
-    failed = total_decisions - passed
-    
-    # Current streak (consecutive days with entries)
-    streak = 0
-    current_date = datetime.now().date()
-    for entry in reversed(service.state.journal_entries):
-        entry_date = datetime.fromisoformat(entry.date).date()
-        if entry_date == current_date:
-            streak += 1
-            current_date -= timedelta(days=1)
-        elif entry_date < current_date:
-            break
-    
-    # Display stats
-    console.print(Panel.fit(
-        f"[bold cyan]Parliament Statistics[/bold cyan]\n\n"
-        f"📊 Overall:\n"
-        f"  • Total Sessions: {total_entries}\n"
-        f"  • Total Decisions: {total_decisions}\n"
-        f"  • Identity Versions: {total_bruces}\n"
-        f"  • Days Active: {days_active}\n"
-        f"  • Current Streak: {streak} days\n\n"
-        f"📝 Session Types:\n" +
-        "\n".join(f"  • {k}: {v}" for k, v in session_types.items()) +
-        f"\n\n🗳️  Decision Record:\n"
-        f"  • Passed: {passed}\n"
-        f"  • Failed: {failed}\n"
-        f"  • Success Rate: {(passed/total_decisions*100) if total_decisions > 0 else 0:.1f}%",
-        title="📈 Your Journey"
-    ))
-    
-    # Most productive Bruce
-    if service.state.bruce_history:
-        most_sessions = max(service.state.bruce_history, key=lambda b: b.session_count)
-        console.print(f"\n[bold]Most Productive Bruce:[/bold] {most_sessions.name} ({most_sessions.session_count} sessions)")
-    
-    # Recent activity
-    if total_entries >= 7:
-        recent_7 = service.state.journal_entries[-7:]
-        console.print(f"\n[bold]Last 7 Days Activity:[/bold]")
-        for entry in recent_7:
-            date = datetime.fromisoformat(entry.date).strftime('%Y-%m-%d')
-            console.print(f"  {date}: {entry.session_type}")
+    analytics_data = service.get_analytics_summary(days=days)
 
+    print_header(f"Analytics ({days} days)")
 
-@app.command()
-def export(format: str = typer.Option("markdown", help="Export format: markdown or json")):
-    """Export all parliament data."""
-    service = get_service()
-    
-    timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
-    
-    if format == "json":
-        filename = f"parliament_export_{timestamp}.json"
-        import json
-        with open(filename, 'w') as f:
-            json.dump(service.state.model_dump(), f, indent=2)
-        console.print(f"[green]✓ Exported to {filename}[/green]")
-    
-    elif format == "markdown":
-        filename = f"parliament_export_{timestamp}.md"
-        
-        with open(filename, 'w') as f:
-            f.write("# Parliament of Bruce - Complete Export\n\n")
-            f.write(f"Generated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n\n")
-            
-            # Bruce timeline
-            f.write("## Bruce Identity Timeline\n\n")
-            all_bruces = service.state.bruce_history.copy()
-            if service.state.reigning_bruce:
-                all_bruces.append(service.state.reigning_bruce)
-            
-            for bruce in all_bruces:
-                f.write(f"### {bruce.name}\n")
-                f.write(f"- Start: {bruce.start_date}\n")
-                if bruce.end_date:
-                    f.write(f"- End: {bruce.end_date}\n")
-                f.write(f"- Reason: {bruce.reason_born}\n")
-                f.write(f"- Sessions: {bruce.session_count}\n")
-                if bruce.exit_report:
-                    f.write(f"- Exit: {bruce.exit_report}\n")
-                f.write("\n")
-            
-            # Journal entries
-            f.write("## Journal Entries\n\n")
-            for entry in service.state.journal_entries:
-                date = datetime.fromisoformat(entry.date).strftime('%Y-%m-%d')
-                f.write(f"### {date} - {entry.session_type}\n")
-                f.write(f"**Bruce:** {entry.reigning_bruce_name}\n\n")
-                f.write(f"**Short-Term:** {entry.short_term}\n\n")
-                f.write(f"**Mid-Term:** {entry.mid_term}\n\n")
-                f.write(f"**Long-Term:** {entry.long_term}\n\n")
-                f.write(f"**Purpose:** {entry.purpose}\n\n")
-                f.write(f"**Ultimate:** {entry.ultimate}\n\n")
-                f.write(f"**Reigning:** {entry.reigning}\n\n")
-                f.write(f"**Policy:** {entry.final_policy}\n\n")
-                f.write("---\n\n")
-        
-        console.print(f"[green]✓ Exported to {filename}[/green]")
-    
-    else:
-        console.print("[red]Unknown format. Use: markdown or json[/red]")
+    console.print("\n[bold cyan]Dominance Scores:[/bold cyan]")
+    for seat, score in analytics_data["dominance_scores"].items():
+        console.print(f"  {seat}: {score}")
+
+    console.print("\n[bold cyan]Speaking Frequency:[/bold cyan]")
+    for seat, freq in analytics_data["speaking_frequency"].items():
+        console.print(f"  {seat}: {freq} sessions")
+
+    console.print("\n[bold cyan]Trends:[/bold cyan]")
+    for seat, trend in analytics_data["trends"].items():
+        direction = "↑" if trend["direction"] == "up" else ("↓" if trend["direction"] == "down" else "→")
+        console.print(f"  {seat}: {direction} ({trend['change']:+d})")
+
+    db_session.close()
 
 
 if __name__ == "__main__":
