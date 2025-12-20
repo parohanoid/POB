@@ -347,6 +347,11 @@ def add_voice(
     """Add a temporary Bruce voice to parliament (discussion only, no voting)."""
     service = get_service()
     
+    if not service.state.reigning_bruce:
+        console.print("[yellow]⚠️  No Reigning Bruce active. Create one first:[/yellow]")
+        console.print("  pob reign new")
+        return
+    
     temp_bruce = service.add_temporary_bruce(name, description)
     
     console.print(Panel.fit(
@@ -374,6 +379,8 @@ def remove_voice(voice_id: str = typer.Argument(..., help="ID of the temporary B
     if confirm:
         service.dismiss_temporary_bruce(voice_id)
         console.print(f"[green]✓ '{voice.name}' has been dismissed[/green]")
+    else:
+        console.print(f"[dim]Removal cancelled. '{voice.name}' remains in parliament.[/dim]")
 
 
 @app.command()
@@ -456,6 +463,12 @@ def read(
         if date.lower() == "latest":
             entries = [service.state.journal_entries[-1]]
         else:
+            # Validate date format
+            if not (len(date) in [10, 7] and date.replace('-', '').isdigit()):
+                console.print(f"[red]✗ Invalid date format: '{date}'[/red]")
+                console.print("[yellow]Use format: YYYY-MM-DD or YYYY-MM[/yellow]")
+                return
+            
             # Parse date and find matching entries
             target_date = date
             entries = [e for e in service.state.journal_entries 
@@ -539,6 +552,13 @@ def search(
 ):
     """Search journal entries for specific content."""
     service = get_service()
+    
+    # Validate seat parameter first
+    valid_seats = ["short_term", "mid_term", "long_term", "purpose", "ultimate", "reigning", "policy"]
+    if seat and seat not in valid_seats:
+        console.print(f"[red]✗ Invalid seat: '{seat}'[/red]")
+        console.print(f"[yellow]Valid seats: {', '.join(valid_seats)}[/yellow]")
+        return
     
     if not service.state.journal_entries:
         console.print("[yellow]No journal entries to search[/yellow]")
@@ -696,9 +716,11 @@ def export(format: str = typer.Option("markdown", help="Export format: markdown 
     if format == "json":
         filename = f"parliament_export_{timestamp}.json"
         import json
+        import os
         with open(filename, 'w') as f:
             json.dump(service.state.dict(), f, indent=2)
-        console.print(f"[green]✓ Exported to {filename}[/green]")
+        abs_path = os.path.abspath(filename)
+        console.print(f"[green]✓ Exported to {abs_path}[/green]")
     
     elif format == "markdown":
         filename = f"parliament_export_{timestamp}.md"
@@ -739,7 +761,9 @@ def export(format: str = typer.Option("markdown", help="Export format: markdown 
                 f.write(f"**Policy:** {entry.final_policy}\n\n")
                 f.write("---\n\n")
         
-        console.print(f"[green]✓ Exported to {filename}[/green]")
+        import os
+        abs_path = os.path.abspath(filename)
+        console.print(f"[green]✓ Exported to {abs_path}[/green]")
     
     else:
         console.print("[red]Unknown format. Use: markdown or json[/red]")
