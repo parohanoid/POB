@@ -79,7 +79,7 @@ def status():
 def session(
     session_type: str = typer.Argument("daily", help="Session type: daily, weekly, monthly")
 ):
-    """Conduct a parliament session."""
+    """Conduct a parliament session with rotating discussion."""
     service = get_service()
     
     if not service.state.reigning_bruce:
@@ -89,39 +89,122 @@ def session(
     
     console.print(Panel.fit(
         f"[bold cyan]{session_type.upper()} PARLIAMENT SESSION[/bold cyan]\n"
-        f"Reigning Bruce: {service.state.reigning_bruce.name}",
+        f"Reigning Bruce: {service.state.reigning_bruce.name}\n"
+        f"Reason Born: {service.state.reigning_bruce.reason_born}\n\n"
+        f"[yellow]Parliament Discussion (Rotating)[/yellow]\n"
+        f"Each seat will speak. After all have spoken, you can continue the discussion\n"
+        f"or move to final policy. Press [bold]Ctrl+D[/bold] to end rotation.",
         title="🏛️  Parliament Convenes"
     ))
     
-    responses = {}
+    permanent_responses = {}
+    temporary_responses = {}
+    round_num = 1
+    stop_rotation = False
     
-    # Collect from each seat
-    seats = [
-        ("short_term", "Short-Term Bruce", "What does your immediate self need today?"),
-        ("mid_term", "Mid-Term Bruce", "What should you focus on this week/month?"),
-        ("long_term", "Long-Term Bruce", "What moves you toward your 5-year vision?"),
-        ("purpose", "Purpose Bruce", "How does today align with your deepest values?"),
-        ("ultimate", "Ultimate Bruce", "What truth must be spoken from the end of your life?"),
+    # Get seat order with full descriptions
+    permanent_order = [
+        ("short_term", "🟥 Short-Term Bruce — The Rebel / The Animal", "Time: now, today, tonight\nBody over mind. Nerves over plans.\n'I want relief, not reasons. Pain feels urgent. Boredom is death. Discipline feels like a cage. I don't care about later. I speak in cravings, anger, fear. If ignored, I sabotage.'\n\nActivation: What hurts right now, and what would make it stop?"),
+        ("mid_term", "🟨 Mid-Term Bruce — The Operator", "Time: this week, this month\nExecution over emotion.\n'I care about momentum. Small wins beat grand visions. Systems beat willpower. Burnout is my enemy. Chaos wastes energy. I translate emotion into tasks. Consistency is power.'\n\nActivation: What's the minimum action that moves this forward?"),
+        ("long_term", "🟦 Long-Term Bruce — The Architect", "Time: years ahead\nStructure over impulse.\n'I think in systems and leverage. Compounding is sacred. Short-term pleasure is expensive. I care about trajectory, not mood. Emotions are data. I design environments. Waste of potential is the real sin.'\n\nActivation: Does this scale, compound, or rot?"),
+        ("purpose", "🟪 Purpose Bruce — The Dharma Bearer", "Time: lifetime\nMeaning over success.\n'I guard the story of your life. Power without meaning is hollow. Pain must become purpose. I ask why before how. Betraying values costs more than failure. I see patterns across incarnations of you. I speak softly but halt everything.'\n\nActivation: Is this worthy of the story we're living?"),
+        ("ultimate", "⚫ Ultimate Bruce — The Judge", "Time: deathbed\nLegacy over everything.\n'I am immune to excuses. I don't care how it felt, only what it became. Regret is my metric. I veto actions you'll live with forever. Comfort now can mean shame later. I see your life as one object.'\n\nActivation: When this is over… will we respect this choice?"),
     ]
     
-    for key, name, prompt in seats:
-        console.print(f"\n[bold cyan]{name}[/bold cyan]")
-        response = typer.prompt(prompt)
-        responses[key] = response
+    temp_bruces = service.get_active_temporary_bruces()
     
-    # Reigning Bruce summary
-    console.print(f"\n[bold cyan]Reigning Bruce ({service.state.reigning_bruce.name})[/bold cyan]")
-    responses["reigning"] = typer.prompt("Synthesize the parliament's wisdom")
+    while not stop_rotation:
+        console.print(f"\n[bold magenta]━━━ ROUND {round_num} ━━━[/bold magenta]")
+        round_had_responses = False
+        
+        # Permanent seats + Reigning Bruce
+        seats_to_speak = permanent_order + [
+              ("reigning", f"👑 Reigning Bruce ({service.state.reigning_bruce.name})", f"Synthesize the parliament's wisdom and set direction for the realm.\nReason Born: {service.state.reigning_bruce.reason_born}")
+        ]
+        
+        for key, name, prompt in seats_to_speak:
+            console.print(f"\n[bold cyan]{name}[/bold cyan]")
+            try:
+                response = typer.prompt(prompt)
+                
+                if round_num == 1:
+                    permanent_responses[key] = response
+                else:
+                    if permanent_responses.get(key):
+                        permanent_responses[key] += f"\n\n[Round {round_num}] {response}"
+                    else:
+                        permanent_responses[key] = response
+                round_had_responses = True
+            except EOFError:
+                # Handle Ctrl+D - gracefully end rotation
+                stop_rotation = True
+                console.print("\n[dim]Rotation ended.[/dim]")
+                break
+        
+        if stop_rotation:
+            break
+        
+        # Temporary bruces
+        for temp_id, temp_bruce in temp_bruces:
+            console.print(f"\n[bold yellow]{temp_bruce.name}[/bold yellow]")
+            console.print(f"[dim][{temp_bruce.description}][/dim]")
+            try:
+                response = typer.prompt(f"{temp_bruce.name} — {temp_bruce.description}\nYour response:")
+                
+                if temp_id not in temporary_responses:
+                    temporary_responses[temp_id] = response
+                else:
+                    temporary_responses[temp_id] += f"\n\n[Round {round_num}] {response}"
+                round_had_responses = True
+            except EOFError:
+                # Handle Ctrl+D - gracefully end rotation
+                stop_rotation = True
+                console.print("\n[dim]Rotation ended.[/dim]")
+                break
+        
+        if stop_rotation:
+            break
+        
+        # Ask if user wants to continue discussion
+        if round_had_responses:
+            console.print(f"\n[dim]All seats have spoken in Round {round_num}.[/dim]")
+            try:
+                continue_discussion = typer.confirm("Continue discussion for another round?", default=False)
+                if not continue_discussion:
+                    stop_rotation = True
+                else:
+                    round_num += 1
+            except EOFError:
+                # Handle Ctrl+D during the continue prompt
+                stop_rotation = True
+                console.print("\n[dim]Rotation ended.[/dim]")
+        else:
+            stop_rotation = True
+    
+    # Get Final Reigning Bruce synthesis (if not already given during rotation)
+    if "reigning" not in permanent_responses or not permanent_responses["reigning"]:
+        console.print(f"\n[bold green]Reigning Bruce ({service.state.reigning_bruce.name}) — Final Synthesis[/bold green]")
+        try:
+            reigning_response = typer.prompt("Synthesize the parliament's wisdom")
+            permanent_responses["reigning"] = reigning_response
+        except EOFError:
+            permanent_responses["reigning"] = "[Synthesis skipped]"
     
     # Final policy
     console.print(f"\n[bold green]Final Policy[/bold green]")
-    responses["final_policy"] = typer.prompt("What is today's governing policy?")
+    try:
+        final_policy = typer.prompt("What is today's governing policy?")
+    except EOFError:
+        final_policy = "[Policy skipped]"
     
-    # Create entry
-    entry = service.create_session(session_type, responses)
+    permanent_responses["final_policy"] = final_policy
+    
+    entry = service.create_session(session_type, permanent_responses, temporary_responses)
     
     console.print("\n[green]✓ Session recorded successfully[/green]")
     console.print(f"[dim]Entry saved: {datetime.fromisoformat(entry.date).strftime('%Y-%m-%d %H:%M')}[/dim]")
+    if temporary_responses:
+        console.print(f"[dim]Temporary Bruces contributed: {len(temporary_responses)}[/dim]")
 
 
 @app.command()
@@ -257,6 +340,77 @@ def reign(action: str = typer.Argument("new", help="Action: new")):
 
 
 @app.command()
+def add_voice(
+    name: str = typer.Argument(..., help="Name of the temporary Bruce"),
+    description: str = typer.Option(..., "--description", "-d", help="Description of this voice")
+):
+    """Add a temporary Bruce voice to parliament (discussion only, no voting)."""
+    service = get_service()
+    
+    if not service.state.reigning_bruce:
+        console.print("[yellow]⚠️  No Reigning Bruce active. Create one first:[/yellow]")
+        console.print("  pob reign new")
+        return
+    
+    temp_bruce = service.add_temporary_bruce(name, description)
+    
+    console.print(Panel.fit(
+        f"[bold cyan]{name}[/bold cyan]\n\n"
+        f"[dim]{description}[/dim]\n\n"
+        f"[green]✓ Added to parliament[/green]\n"
+        f"[dim]ID: {temp_bruce.id}[/dim]",
+        title="🗣️  New Voice"
+    ))
+
+
+@app.command()
+def remove_voice(voice_id: str = typer.Argument(..., help="ID of the temporary Bruce to remove")):
+    """Remove a temporary Bruce voice from parliament."""
+    service = get_service()
+    
+    # Find the voice
+    if voice_id not in service.state.temporary_bruces:
+        console.print(f"[red]✗ Voice '{voice_id}' not found[/red]")
+        return
+    
+    voice = service.state.temporary_bruces[voice_id]
+    confirm = typer.confirm(f"Remove '{voice.name}' from parliament?")
+    
+    if confirm:
+        service.dismiss_temporary_bruce(voice_id)
+        console.print(f"[green]✓ '{voice.name}' has been dismissed[/green]")
+    else:
+        console.print(f"[dim]Removal cancelled. '{voice.name}' remains in parliament.[/dim]")
+
+
+@app.command()
+def voices():
+    """List all active temporary Bruce voices in parliament."""
+    service = get_service()
+    
+    temp_bruces = service.get_active_temporary_bruces()
+    
+    if not temp_bruces:
+        console.print("[yellow]No temporary voices currently active[/yellow]")
+        console.print("Add one with: [cyan]pob add-voice <name> -d <description>[/cyan]")
+        return
+    
+    console.print(Panel.fit(
+        "[bold cyan]Active Temporary Voices in Parliament[/bold cyan]",
+        title="🗣️  Voices"
+    ))
+    
+    for temp_id, temp_bruce in temp_bruces:
+        console.print(f"\n[bold]{temp_bruce.name}[/bold]")
+        console.print(f"  ID: {temp_id}")
+        console.print(f"  Description: {temp_bruce.description}")
+        if temp_bruce.last_statement:
+            statement_preview = temp_bruce.last_statement[:100] + "..." if len(temp_bruce.last_statement) > 100 else temp_bruce.last_statement
+            console.print(f"  Last: {statement_preview}")
+
+
+
+@app.command()
 def timeline():
     """Show timeline of all Bruce identities."""
     service = get_service()
@@ -309,6 +463,12 @@ def read(
         if date.lower() == "latest":
             entries = [service.state.journal_entries[-1]]
         else:
+            # Validate date format
+            if not (len(date) in [10, 7] and date.replace('-', '').isdigit()):
+                console.print(f"[red]✗ Invalid date format: '{date}'[/red]")
+                console.print("[yellow]Use format: YYYY-MM-DD or YYYY-MM[/yellow]")
+                return
+            
             # Parse date and find matching entries
             target_date = date
             entries = [e for e in service.state.journal_entries 
@@ -357,6 +517,15 @@ def read(
             console.print(f"\n[bold yellow]Final Policy:[/bold yellow]")
             console.print(entry.final_policy)
             
+            # Show temporary Bruce responses if any
+            if entry.temporary_bruce_entries:
+                console.print(f"\n[bold yellow]Temporary Voices:[/bold yellow]")
+                for temp_id, response in entry.temporary_bruce_entries.items():
+                    if temp_id in service.state.temporary_bruces:
+                        temp_bruce = service.state.temporary_bruces[temp_id]
+                        console.print(f"\n[yellow]{temp_bruce.name}:[/yellow]")
+                        console.print(response)
+            
             if entry.decisions_voted_on:
                 console.print(f"\n[bold]Decisions Voted:[/bold]")
                 for dec in entry.decisions_voted_on:
@@ -383,6 +552,13 @@ def search(
 ):
     """Search journal entries for specific content."""
     service = get_service()
+    
+    # Validate seat parameter first
+    valid_seats = ["short_term", "mid_term", "long_term", "purpose", "ultimate", "reigning", "policy"]
+    if seat and seat not in valid_seats:
+        console.print(f"[red]✗ Invalid seat: '{seat}'[/red]")
+        console.print(f"[yellow]Valid seats: {', '.join(valid_seats)}[/yellow]")
+        return
     
     if not service.state.journal_entries:
         console.print("[yellow]No journal entries to search[/yellow]")
@@ -540,9 +716,11 @@ def export(format: str = typer.Option("markdown", help="Export format: markdown 
     if format == "json":
         filename = f"parliament_export_{timestamp}.json"
         import json
+        import os
         with open(filename, 'w') as f:
-            json.dump(service.state.model_dump(), f, indent=2)
-        console.print(f"[green]✓ Exported to {filename}[/green]")
+            json.dump(service.state.dict(), f, indent=2)
+        abs_path = os.path.abspath(filename)
+        console.print(f"[green]✓ Exported to {abs_path}[/green]")
     
     elif format == "markdown":
         filename = f"parliament_export_{timestamp}.md"
@@ -583,7 +761,9 @@ def export(format: str = typer.Option("markdown", help="Export format: markdown 
                 f.write(f"**Policy:** {entry.final_policy}\n\n")
                 f.write("---\n\n")
         
-        console.print(f"[green]✓ Exported to {filename}[/green]")
+        import os
+        abs_path = os.path.abspath(filename)
+        console.print(f"[green]✓ Exported to {abs_path}[/green]")
     
     else:
         console.print("[red]Unknown format. Use: markdown or json[/red]")

@@ -15,6 +15,16 @@ class Seat(BaseModel):
         validate_assignment = True
 
 
+class TemporaryBruce(BaseModel):
+    """Represents a temporary Bruce voice in parliament - no voting rights."""
+    id: str
+    name: str
+    description: str
+    created_at: str = Field(default_factory=lambda: datetime.now().isoformat())
+    last_statement: str = ""
+    active: bool = True
+
+
 class ReigningBruce(BaseModel):
     """Represents the current identity version."""
     name: str
@@ -55,6 +65,7 @@ class JournalEntry(BaseModel):
     final_policy: str
     decisions_voted_on: List[Decision] = Field(default_factory=list)
     reigning_bruce_name: str = ""
+    temporary_bruce_entries: Dict[str, str] = Field(default_factory=dict)  # {temp_bruce_id: response}
 
     class Config:
         validate_assignment = True
@@ -67,6 +78,7 @@ class ParliamentState(BaseModel):
     bruce_history: List[ReigningBruce] = Field(default_factory=list)
     journal_entries: List[JournalEntry] = Field(default_factory=list)
     decisions: List[Decision] = Field(default_factory=list)
+    temporary_bruces: Dict[str, TemporaryBruce] = Field(default_factory=dict)  # {id: TemporaryBruce}
     created_at: str = Field(default_factory=lambda: datetime.now().isoformat())
 
     class Config:

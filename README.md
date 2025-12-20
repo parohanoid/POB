@@ -4,15 +4,34 @@ A powerful command-line psychological journaling and decision-making system that
 
 ## 📖 Philosophy
 
-The Parliament of Bruce recognizes that you are not one person, but a collection of temporal selves with different priorities:
+The Parliament of Bruce recognizes that you are not one person, but a collection of temporal selves with different priorities, operating at different time horizons and with different values:
 
-- **Short-Term Bruce** (1 vote): Immediate needs, pleasure, survival
-- **Mid-Term Bruce** (2 votes): Weekly/monthly planning, relationships, career
-- **Long-Term Bruce** (3 votes): Years-ahead vision, legacy, strategy
-- **Purpose Bruce** (4 votes): Life meaning, values, existential direction
-- **Ultimate Bruce** (5 votes): Death-aware wisdom, final truth
+- **🟥 Short-Term Bruce — The Rebel / The Animal** (1 vote): **Now, today, tonight**
+  - Body over mind. Nerves over plans. Wants relief, not reasons.
+  - Pain feels urgent. Boredom is death. Discipline feels like a cage.
+  - Speaks in cravings, anger, fear. Tells raw truth others hide.
 
-Plus a **Reigning Bruce** (3 votes): Your current identity version that changes through life transitions.
+- **🟨 Mid-Term Bruce — The Operator** (2 votes): **This week, this month**
+  - Execution over emotion. Cares about momentum and small wins.
+  - Systems beat willpower. Burnout is the real enemy.
+  - Translates emotion into tasks. Asks: what's doable, not ideal?
+
+- **🟦 Long-Term Bruce — The Architect** (3 votes): **Years ahead**
+  - Structure over impulse. Thinks in systems and leverage.
+  - Compounding is sacred. Designs environments, not days.
+  - Sees emotions as data, not commands. Waste of potential is the real sin.
+
+- **🟪 Purpose Bruce — The Dharma Bearer** (4 votes): **Lifetime**
+  - Meaning over success. Guards the story of your life.
+  - Power without meaning is hollow. Asks why before how.
+  - Speaks softly but halts everything when values are betrayed.
+
+- **⚫ Ultimate Bruce — The Judge** (5 votes): **Deathbed**
+  - Legacy over everything. Immune to excuses.
+  - Doesn't care how it felt, only what it became.
+  - Sees your entire life as one object. Asks the final question.
+
+Plus a **Reigning Bruce** (3 votes): Your current identity version that changes through life transitions, synthesizing all voices.
 
 Total voting power: 18 votes. Decisions pass with ≥10 votes.
 
@@ -80,14 +99,23 @@ You'll be asked:
 ```bash
 pob session daily
 ```
-Conducts a full parliament session where each seat speaks:
-1. Short-Term voice
-2. Mid-Term voice
-3. Long-Term voice
-4. Purpose voice
-5. Ultimate voice
-6. Reigning Bruce synthesis
-7. Final policy for the day
+Conducts a full **rotating parliament session** where voices speak in rounds. Each voice appears with their full archetype description and activation cue—allowing you to **put on their mask** and speak from their frame:
+
+1. **🟥 Short-Term Bruce** — The Rebel / The Animal
+   - *Activation: What hurts right now, and what would make it stop?*
+2. **🟨 Mid-Term Bruce** — The Operator
+   - *Activation: What's the minimum action that moves this forward?*
+3. **🟦 Long-Term Bruce** — The Architect
+   - *Activation: Does this scale, compound, or rot?*
+4. **🟪 Purpose Bruce** — The Dharma Bearer
+   - *Activation: Is this worthy of the story we're living?*
+5. **⚫ Ultimate Bruce** — The Judge
+   - *Activation: When this is over… will we respect this choice?*
+6. Any active Temporary Bruces (in order)
+7. (After each round, choose to continue the discussion or proceed)
+8. **Reigning Bruce** — Synthesis and final policy
+
+The session supports **multi-round discussion** - after all voices speak once, you can choose to continue for additional rounds where any voice can offer new perspectives, or move directly to synthesis.
 
 ### Weekly Review
 ```bash
@@ -143,12 +171,93 @@ Generates a complete export of:
 - All decisions
 - Complete timeline
 
+## 🗣️ Temporary Voices (New Feature!)
+
+Beyond the five permanent seats and the Reigning Bruce, you can now add **temporary Bruce voices** to your parliament. These are context-specific perspectives that don't have voting rights but can participate in discussions.
+
+### Add a Temporary Voice
+```bash
+pob add-voice "Anxiety Bruce" -d "The voice of worry and concern"
+pob add-voice "Shadow Self" -d "What lies beneath my awareness"
+pob add-voice "Critical Parent" -d "The internalized critic"
+```
+
+Each temporary voice:
+- Has no voting rights (discussion only)
+- Gets a unique ID for tracking
+- Can speak during parliament sessions
+- Persists across sessions until dismissed
+
+### View Active Voices
+```bash
+pob voices
+```
+Lists all temporary Bruces currently in parliament with their:
+- Name and description
+- Unique ID
+- Last statement
+
+### Remove a Temporary Voice
+```bash
+pob remove-voice <voice_id>
+```
+Dismiss a temporary voice from the parliament. Example:
+```bash
+pob remove-voice a1b2c3d4
+```
+
+### Using Temporary Voices in Sessions
+
+When you run `pob session daily`, temporary voices are included in the rotating discussion:
+- They speak in order after the five permanent seats
+- You can run multiple rounds where any voice (including temps) can offer additional thoughts
+- Their responses are recorded in the journal entry but don't count toward voting decisions
+- Perfect for exploring marginalized perspectives or temporary concerns
+
+## Export Your Data
+```bash
+pob export --format markdown  # or json
+```
+Generates a complete export of:
+- All Bruce identities
+- All journal entries
+- All decisions
+- Complete timeline
+
 ## 💡 Usage Examples
 
-### Morning Routine
+### Morning Routine with Temporary Voices
 ```bash
+# First time setup - add temporary perspectives you want to hear from
+pob add-voice "Anxiety" -d "What are my worries?"
+pob add-voice "Body" -d "What does my body need?"
+
+# Conduct your session with rotating discussion
 pob status        # Check yesterday's policy
-pob session daily # Conduct today's session
+pob session daily # Conduct today's session with all voices
+#   → Rotate through: Short-Term, Mid-Term, Long-Term, Purpose, Ultimate, Anxiety, Body
+#   → Choose to continue for Round 2 or proceed to Reigning synthesis
+#   → Get final policy for the day
+```
+
+### Multi-Round Parliament Discussion
+```bash
+pob session daily
+# Round 1: Each voice speaks once
+#   Short-Term: "Coffee!"
+#   Mid-Term: "Meetings scheduled"
+#   Long-Term: "Project progression good"
+#   Purpose: "Aligned with goals"
+#   Ultimate: "Living authentically"
+#   Anxiety: "Too many deadlines"
+#   Body: "Need stretching"
+
+# System asks: Continue discussion for another round? (y/n)
+# If yes, goes to Round 2:
+#   Short-Term: "Actually need a walk first"
+#   [etc...]
+
+# Then moves to final synthesis and policy
 ```
 
 ### Review Your Week
@@ -165,28 +274,43 @@ pob search "breakthrough"          # Find your breakthrough moments
 pob search "career" --seat purpose # What did Purpose say about career?
 ```
 
-### Read a Specific Memory
+### Read a Specific Memory (with Temporary Voices)
 ```bash
-pob read --date 2025-12-01 --full  # Revisit December 1st
-pob read --date latest --full      # Read your latest entry
+pob read --date 2025-12-17 --full
+# Now shows all permanent Bruce voices, Reigning synthesis, AND any temporary voices that spoke that day
 ```
 
 ### Major Decision
 ```bash
 pob vote "Accept job offer in new city?"
-# Each seat votes based on their timeline
+# Each permanent seat votes based on their timeline
+# Temporary voices don't vote but you can review their concerns
 # Result shows whether parliament approves
 ```
 
-### Life Transition
+### Manage Temporary Voices
 ```bash
-# After a breakup
+pob voices                    # See all active temporary voices
+pob remove-voice a1b2c3d4     # Remove voice when no longer needed
+
+# Add new ones as needed for different life phases
+pob add-voice "Grief" -d "Process loss from the relationship"
+pob add-voice "Healer" -d "Recovery and resilience"
+```
+
+### Life Transition with Voices
+```bash
+# After a breakup - add context-specific voices
+pob add-voice "Grief" -d "Mourning what was lost"
+pob add-voice "Future Self" -d "Who will I become?"
+
 pob rebirth
 # Name: "Post-Sarah Bruce"
 # Event: "Ended 3-year relationship, moving to new apartment"
 
 # Creates exit report for previous Bruce
 # New Bruce begins with clean slate but full memory
+# Can keep or remove temporary voices as needed
 ```
 
 ### Weekly Review
@@ -220,15 +344,24 @@ The system monitors patterns and warns you:
 ### Journal Entry
 Each session stores:
 - Date and type
-- Response from each seat
-- Reigning Bruce synthesis
+- Response from each permanent seat
+- Response from Reigning Bruce
 - Final policy
+- **Responses from any temporary Voices that spoke**
 - Associated decisions
+
+### Temporary Voice
+Each temporary Bruce stores:
+- Unique ID
+- Name and description
+- Creation date
+- Last statement
+- Active status
 
 ### Decision Record
 Each vote stores:
 - Topic
-- Each seat's vote
+- Each permanent seat's vote (temporary voices don't vote)
 - Score breakdown
 - Pass/fail result
 - Timestamp
@@ -290,6 +423,17 @@ cp -r ~/.parliament_of_bruce ~/parliament_backup_$(date +%Y%m%d)
 ```bash
 cat ~/.parliament_of_bruce/parliament_data.json | python -m json.tool
 ```
+
+## 🔄 Backward Compatibility
+
+The new temporary voice feature is **fully backward compatible** with existing data:
+
+- Old `parliament_data.json` files without the `temporary_bruces` field load automatically
+- Existing journal entries without `temporary_bruce_entries` are preserved as-is
+- No migration needed - the system adds missing fields on first load
+- You can immediately start using temporary voices with your existing parliament
+
+Simply run the new commands when you're ready to add temporary perspectives to your existing sessions.
 
 ## 🤝 Contributing
 

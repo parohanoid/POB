@@ -1,6 +1,7 @@
 from datetime import datetime
-from typing import Dict, List, Tuple
-from .models import Decision, JournalEntry, ReigningBruce, ParliamentState
+from typing import Dict, List, Tuple, Optional
+import uuid
+from .models import Decision, JournalEntry, ReigningBruce, ParliamentState, TemporaryBruce
 from .storage import Storage
 
 
@@ -27,7 +28,7 @@ class ParliamentService:
         """Save current state."""
         self.storage.save(self.state)
     
-    def create_session(self, session_type: str, responses: Dict[str, str]) -> JournalEntry:
+    def create_session(self, session_type: str, responses: Dict[str, str], temp_bruce_responses: Optional[Dict[str, str]] = None) -> JournalEntry:
         """Create a new journal entry from session responses."""
         entry = JournalEntry(
             date=datetime.now().isoformat(),
@@ -39,7 +40,8 @@ class ParliamentService:
             ultimate=responses.get("ultimate", ""),
             reigning=responses.get("reigning", ""),
             final_policy=responses.get("final_policy", ""),
-            reigning_bruce_name=self.state.reigning_bruce.name if self.state.reigning_bruce else "None"
+            reigning_bruce_name=self.state.reigning_bruce.name if self.state.reigning_bruce else "None",
+            temporary_bruce_entries=temp_bruce_responses or {}
         )
         
         self.state.journal_entries.append(entry)
@@ -157,3 +159,167 @@ class ParliamentService:
             warnings.append("⚠️  Ultimate Bruce is not being consulted. Death-aware wisdom is missing.")
         
         return warnings if warnings else ["✓ Parliament balance appears healthy"]
+    
+    def add_temporary_bruce(self, name: str, description: str) -> TemporaryBruce:
+        """Add a temporary Bruce to the parliament."""
+        temp_id = str(uuid.uuid4())[:8]
+        temp_bruce = TemporaryBruce(
+            id=temp_id,
+            name=name,
+            description=description
+        )
+        self.state.temporary_bruces[temp_id] = temp_bruce
+        self.save()
+        return temp_bruce
+    
+    def dismiss_temporary_bruce(self, temp_id: str) -> bool:
+        """Remove a temporary Bruce from parliament."""
+        if temp_id in self.state.temporary_bruces:
+            del self.state.temporary_bruces[temp_id]
+            self.save()
+            return True
+        return False
+    
+    def get_active_temporary_bruces(self) -> List[Tuple[str, TemporaryBruce]]:
+        """Get all active temporary bruces."""
+        return [(temp_id, bruce) for temp_id, bruce in self.state.temporary_bruces.items() if bruce.active]
+    
+    def get_all_parliament_seats(self) -> Dict[str, Dict]:
+        """Get all permanent seats and temporary bruces for parliament."""
+        seats = {}
+        
+        # Add permanent seats with full descriptions for wearing the mask
+        permanent = [
+            ("ShortTerm", "🟥 Short-Term Bruce — The Rebel / The Animal", "Time: now, today, tonight\nBody over mind. Nerves over plans.\n'I want relief, not reasons. Pain feels urgent. Boredom is death. Discipline feels like a cage. I don't care about later. I speak in cravings, anger, fear. If ignored, I sabotage.'\n\nActivation: What hurts right now, and what would make it stop?"),
+            ("MidTerm", "🟨 Mid-Term Bruce — The Operator", "Time: this week, this month\nExecution over emotion.\n'I care about momentum. Small wins beat grand visions. Systems beat willpower. Burnout is my enemy. Chaos wastes energy. I translate emotion into tasks. Consistency is power.'\n\nActivation: What's the minimum action that moves this forward?"),
+            ("LongTerm", "🟦 Long-Term Bruce — The Architect", "Time: years ahead\nStructure over impulse.\n'I think in systems and leverage. Compounding is sacred. Short-term pleasure is expensive. I care about trajectory, not mood. Emotions are data. I design environments. Waste of potential is the real sin.'\n\nActivation: Does this scale, compound, or rot?"),
+            ("Purpose", "🟪 Purpose Bruce — The Dharma Bearer", "Time: lifetime\nMeaning over success.\n'I guard the story of your life. Power without meaning is hollow. Pain must become purpose. I ask why before how. Betraying values costs more than failure. I see patterns across incarnations of you. I speak softly but halt everything.'\n\nActivation: Is this worthy of the story we're living?"),
+            ("Ultimate", "⚫ Ultimate Bruce — The Judge", "Time: deathbed\nLegacy over everything.\n'I am immune to excuses. I don't care how it felt, only what it became. Regret is my metric. I veto actions you'll live with forever. Comfort now can mean shame later. I see your life as one object.'\n\nActivation: When this is over… will we respect this choice?"),
+        ]
+        
+        for key, name, prompt in permanent:
+            seats[key] = {
+                "type": "permanent",
+                "name": name,
+                "prompt": prompt,
+                "has_votes": True
+            }
+        
+        # Add reigning bruce
+        if self.state.reigning_bruce:
+            seats["Reigning"] = {
+                "type": "reigning",
+                "name": self.state.reigning_bruce.name,
+                "prompt": f"Synthesize the parliament's wisdom and set direction for the realm",
+                "has_votes": True
+            }
+        
+        # Add temporary bruces
+        for temp_id, temp_bruce in self.get_active_temporary_bruces():
+            seats[temp_id] = {
+                "type": "temporary",
+                "name": temp_bruce.name,
+                "prompt": f"[{temp_bruce.description}] What do you say?",
+                "has_votes": False,
+                "id": temp_id
+            }
+        
+        return seats
+    
+    def update_temporary_bruce_statement(self, temp_id: str, statement: str) -> bool:
+        """Update the last statement of a temporary bruce."""
+        if temp_id in self.state.temporary_bruces:
+            self.state.temporary_bruces[temp_id].last_statement = statement
+            self.save()
+            return True
+        return False
+    
+    def collect_rotating_session_responses(self, session_type: str, collect_callback) -> Tuple[Dict[str, str], Dict[str, str]]:
+        """
+        Collect responses using a rotating discussion format.
+        
+        Args:
+            session_type: Type of session (daily, weekly, etc.)
+            collect_callback: Async callback function that takes (seat_key, seat_name, prompt, round_num) and returns response or None to stop
+        
+        Returns:
+            Tuple of (permanent_responses, temporary_responses)
+        """
+        permanent_responses = {
+            "short_term": "",
+            "mid_term": "",
+            "long_term": "",
+            "purpose": "",
+            "ultimate": "",
+            "reigning": ""
+        }
+        temporary_responses = {}
+        
+        # Get all parliament seats
+        all_seats = self.get_all_parliament_seats()
+        permanent_order = ["ShortTerm", "MidTerm", "LongTerm", "Purpose", "Ultimate", "Reigning"]
+        
+        # Round-based discussion
+        round_num = 1
+        while True:
+            round_responses_collected = False
+            
+            # Go through permanent seats in order
+            for seat_key in permanent_order:
+                if seat_key not in all_seats:
+                    continue
+                
+                seat_info = all_seats[seat_key]
+                response = collect_callback(
+                    seat_key=seat_key,
+                    seat_name=seat_info["name"],
+                    prompt=seat_info["prompt"],
+                    round_num=round_num,
+                    is_first_round=(round_num == 1)
+                )
+                
+                # None return means user wants to stop
+                if response is None:
+                    break
+                
+                # Empty string is valid response
+                if response is not None:
+                    if seat_key == "Reigning":
+                        permanent_responses["reigning"] = response
+                    else:
+                        perm_key = seat_key[0].lower() + seat_key[1:].replace("Term", "_term")
+                        if perm_key in permanent_responses:
+                            if round_num == 1:
+                                permanent_responses[perm_key] = response
+                            else:
+                                permanent_responses[perm_key] += f"\n\n[Round {round_num}] {response}"
+                    round_responses_collected = True
+            
+            # Go through temporary bruces
+            temp_seats = [(k, v) for k, v in all_seats.items() if v.get("type") == "temporary"]
+            for temp_key, temp_info in temp_seats:
+                response = collect_callback(
+                    seat_key=temp_key,
+                    seat_name=temp_info["name"],
+                    prompt=temp_info["prompt"],
+                    round_num=round_num,
+                    is_first_round=(round_num == 1)
+                )
+                
+                if response is None:
+                    break
+                
+                if response is not None:
+                    if temp_key not in temporary_responses:
+                        temporary_responses[temp_key] = response
+                    else:
+                        temporary_responses[temp_key] += f"\n\n[Round {round_num}] {response}"
+                    round_responses_collected = True
+            
+            # If user chose to stop or no responses collected, break
+            if response is None or not round_responses_collected:
+                break
+            
+            round_num += 1
+        
+        return permanent_responses, temporary_responses
